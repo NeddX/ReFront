@@ -42,6 +42,7 @@ namespace cmm::cmc {
             return Token{ .type = TokenType::Eof };
         }
 
+    forgive_me:
         auto  c             = CurrentChar();
         usize start         = m_CurrentPos;
         auto  current_token = Token{};
@@ -53,14 +54,16 @@ namespace cmm::cmc {
                 current_token.num  = ConsumeNumber();
                 current_token.type = TokenType::NumberLiteral;
             }
-            else if (*c == ' ' || *c == '\t')
-            {
-                // Skip whitespaces n stuff...
-                Consume();
-            }
             else if (*c == '\n')
             {
+                Consume();
                 ++line_count;
+                goto forgive_me;
+            }
+            else if (*c == ' ' || *c == '\t')
+            {
+                Consume();
+                goto forgive_me;
             }
             else if (std::isalpha(*c))
             {
@@ -83,9 +86,10 @@ namespace cmm::cmc {
         }
 
         ++token_count;
-        usize end = m_CurrentPos;
-        current_token.span =
-            TextSpan{ .line = line_count, .cur = token_count, .text = std::string{ m_Source.substr(start, end) } };
+        usize end          = m_CurrentPos;
+        current_token.span = TextSpan{ .line = line_count,
+                                       .cur  = token_count,
+                                       .text = std::string{ m_Source.substr(start, (end - start) ? 1 : end - start) } };
 
         return current_token;
     }
@@ -162,7 +166,7 @@ namespace cmm::cmc {
 
 std::ostream& operator<<(std::ostream& stream, const cmm::cmc::TextSpan& span) noexcept
 {
-    stream << "{ Text: " << span.text << " Line: " << span.line << " Cursor: " << span.cur;
+    stream << "{ Text: '" << span.text << "' Line: " << span.line << " Cursor: " << span.cur;
     return stream;
 }
 
