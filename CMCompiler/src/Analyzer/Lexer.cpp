@@ -12,15 +12,18 @@ namespace cmm::cmc {
                                      "Identifier",
 
                                      // Literals
-                                     "NumberLiteral", "StringLiteral",
+                                     "NumberLiteral", "StringLiteral", "CharacterLiteral",
 
                                      // Operators
                                      "SemiColon", "Equals", "LeftBrace", "RightBrace", "LeftCurlyBracket",
                                      "RightCurlyBracket", "Plus", "Minus", "Asterisk", "ForwardSlash",
+                                     "LeftAngleBracket", "RightAngleBracket", "LeftSquareBracket", "RightSquareBracket",
+                                     "DoubleQuote", "Quote", "Comma", "Exclamation",
 
                                      // Keywords
-                                     "KeywordIf", "KeywordElse", "KeywordElseIf", "KeywordInt", "KeywordString",
-                                     "KeywordWhile", "KeywordReturn", "KeywordTrue", "KeywordFalse",
+                                     "KeywordFn", "KeywordImport", "KeywordIf", "KeywordElse", "KeywordElseIf",
+                                     "KeywordInt", "KeywordString", "KeywordBool", "KeywordChar", "KeywordWhile",
+                                     "KeywordReturn", "KeywordTrue", "KeywordFalse",
 
                                      // Eof
                                      "Eof" };
@@ -31,71 +34,153 @@ namespace cmm::cmc {
     {
     }
 
-    std::optional<Token> Lexer::NextToken() noexcept
+    std::optional<Token> Lexer::NextToken()
     {
-        static usize token_count{};
-        static usize line_count{};
+        static usize token_count = 0;
+        static usize line_count  = 1;
 
+        // If we've reached the end.
         if (m_CurrentPos == m_Source.size())
         {
             ++m_CurrentPos;
             return Token{ .type = TokenType::Eof };
         }
+        else if (m_CurrentPos > m_Source.size())
+            // Now we're past the end.
+            return std::nullopt;
 
-    forgive_me:
         auto  c             = CurrentChar();
         usize start         = m_CurrentPos;
         auto  current_token = Token{};
 
+        // Skip whitespace and friends
+        while (c.has_value() && (*c == ' ' || *c == '\t' || *c == '\n' || *c == '\r'))
+        {
+            // Consume the whitespace.
+            Consume();
+
+            if (*c == '\n')
+                // If it's a line then increment the line count.
+                ++line_count;
+
+            // Progress to the next character and update start.
+            c     = CurrentChar();
+            start = m_CurrentPos;
+        }
+
+        // If our current character is valid.
         if (c.has_value())
         {
+            // If it's a number start.
             if (std::isdigit(*c))
             {
+                // Consume the number and set the type.
                 current_token.num  = ConsumeNumber();
                 current_token.type = TokenType::NumberLiteral;
             }
-            else if (*c == '\n')
-            {
-                Consume();
-                ++line_count;
-                goto forgive_me;
-            }
-            else if (*c == ' ' || *c == '\t')
-            {
-                Consume();
-                goto forgive_me;
-            }
-            else if (std::isalpha(*c))
+            else if (IsIdentifierStart(*c)) // Else if it's a possible identifier.
             {
                 auto ident = ConsumeIdentifier();
 
                 // Check if it's a keyword.
-                if (ident == "if")
+                if (ident == "fn")
+                    current_token.type = TokenType::KeywordFn;
+                else if (ident == "import")
+                    current_token.type = TokenType::KeywordImport;
+                else if (ident == "if")
                     current_token.type = TokenType::KeywordIf;
                 else if (ident == "else")
                     current_token.type = TokenType::KeywordElse;
-                else if (ident == "int")
+                else if (ident == "i32")
                     current_token.type = TokenType::KeywordInt;
                 else if (ident == "string")
                     current_token.type = TokenType::KeywordString;
+                else if (ident == "bool")
+                    current_token.type = TokenType::KeywordBool;
+                else if (ident == "char")
+                    current_token.type = TokenType::KeywordChar;
+                else if (ident == "return")
+                    current_token.type = TokenType::KeywordReturn;
+                else if (ident == "false")
+                    current_token.type = TokenType::KeywordFalse;
+                else if (ident == "true")
+                    current_token.type = TokenType::KeywordTrue;
                 else
                     current_token.type = TokenType::Identifier;
             }
-            else
+            else // Else it must be an operator.
+            {
                 current_token.type = ConsumeOperator();
+
+                // Possible string or character literal.
+                switch (current_token.type)
+                {
+                    case TokenType::DoubleQuote: {
+                        // Consume the string.
+                        auto str = ConsumeString();
+
+                        // This is always going to be true but whatever I guess.
+                        if (str.has_value())
+                        {
+                            // Since we know it's a string we can just handle it right away and move str into our token
+                            // span.
+                            ++token_count;
+                            current_token.type = TokenType::StringLiteral;
+                            current_token.span =
+                                TextSpan{ .line = line_count, .cur = token_count, .text = std::move(*str) };
+
+                            return current_token;
+                        }
+                        break;
+                    }
+                    case TokenType::Quote: {
+                        // Consume the possible character inside the single quotes.
+                        auto c = Consume();
+                        if (c.has_value())
+                        {
+                            // Consume the possible second quote.
+                            auto ec = Consume();
+                            if (ec == '\'')
+                            {
+                                // Since we know it's a character we can just handle it right away.
+                                ++token_count;
+                                current_token.type = TokenType::CharacterLiteral;
+                                current_token.num  = *ec;
+                                current_token.span = TextSpan{ .line = line_count, .cur = token_count };
+                                current_token.span.text += *c;
+
+                                return current_token;
+                            }
+                            else
+                                throw std::runtime_error("Compile Error: Expected a closing single quote.");
+                        }
+                        break;
+                    }
+                    default: break;
+                }
+            }
+        }
+        else
+        {
+            // If our current character is invalid then we've reached the end.
+            ++m_CurrentPos;
+            return Token{ .type = TokenType::Eof };
         }
 
+        // Increment the token count and create our text span which will hold the line number, cursor number and the
+        // text itself.
         ++token_count;
         usize end          = m_CurrentPos;
         current_token.span = TextSpan{ .line = line_count,
                                        .cur  = token_count,
-                                       .text = std::string{ m_Source.substr(start, (end - start) ? 1 : end - start) } };
+                                       .text = std::string{ m_Source.substr(start, end - start) } };
 
         return current_token;
     }
 
     std::optional<char> Lexer::CurrentChar() const noexcept
     {
+        // Bounds checking.
         if (m_Source.size() > m_CurrentPos)
             return m_Source[m_CurrentPos];
         else
@@ -104,6 +189,7 @@ namespace cmm::cmc {
 
     std::optional<char> Lexer::Consume() noexcept
     {
+        // Progress to the next character and return the previous or nothing if we've reached the end.
         if (m_CurrentPos >= m_Source.size())
             return std::nullopt;
         auto c = CurrentChar();
@@ -113,11 +199,13 @@ namespace cmm::cmc {
 
     i64 Lexer::ConsumeNumber() noexcept
     {
+        // Consume the number digit by digit until we hit a non-digit character.
         i64 num = 0;
         for (auto c = CurrentChar(); c.has_value(); c = CurrentChar())
         {
             if (std::isdigit(*c))
             {
+                // If c was valid then Consume the current character then store c into num.
                 Consume();
                 num = num * 10 + (*c - '0');
             }
@@ -132,8 +220,10 @@ namespace cmm::cmc {
         std::string ident{};
         for (auto c = CurrentChar(); c.has_value(); c = CurrentChar())
         {
-            if (std::isalpha(*c))
+            if ((ident.empty() && std::isalpha(*c)) || (!ident.empty() && std::isalnum(*c)) || *c == '_')
             {
+                // If our identifier starts with a letter or contains a possible letter or a number, or it's just an
+                // underscore then Consume the current character, append the previous to ident, then continue.
                 Consume();
                 ident += *c;
             }
@@ -145,7 +235,9 @@ namespace cmm::cmc {
 
     TokenType Lexer::ConsumeOperator() noexcept
     {
-        auto c = *CurrentChar();
+        // We know that this is guaranteed to be an operator so don't even bother with null checking and just unwrap
+        // straight away.
+        auto c = *Consume();
         switch (c)
         {
             case ';': return TokenType::SemiColon;
@@ -158,20 +250,55 @@ namespace cmm::cmc {
             case ')': return TokenType::RightBrace;
             case '{': return TokenType::LeftCurlyBracket;
             case '}': return TokenType::RightCurlyBracket;
+            case '<': return TokenType::LeftAngleBracket;
+            case '>': return TokenType::RightAngleBracket;
+            case '[': return TokenType::LeftSquareBracket;
+            case ']': return TokenType::RightSquareBracket;
+            case '"': return TokenType::DoubleQuote;
+            case '\'': return TokenType::Quote;
+            case ',': return TokenType::Comma;
+            case '!': return TokenType::Exclamation;
             default: break;
         }
         return TokenType::None;
+    }
+
+    std::optional<std::string> Lexer::ConsumeString() noexcept
+    {
+        std::string str{};
+        for (auto c = CurrentChar(); c.has_value(); c = CurrentChar())
+        {
+            // Consume the string until we hit a double quote.
+            Consume();
+            if (*c != '"')
+                str += *c;
+            else
+                break;
+        }
+
+        // If the string was invalid then return nothing, or str otherwise.
+        if (str.empty())
+            return std::nullopt;
+        else
+            return str;
+    }
+
+    bool Lexer::IsIdentifierStart(const char c) const noexcept
+    {
+        // Identifiers start with a letter or an underscore followed by more letters, underscores and numbers.
+        return (std::isalpha(c) || c == '_');
     }
 } // namespace cmm::cmc
 
 std::ostream& operator<<(std::ostream& stream, const cmm::cmc::TextSpan& span) noexcept
 {
-    stream << "{ Text: '" << span.text << "' Line: " << span.line << " Cursor: " << span.cur;
+    stream << "{ Text: '" << span.text << "', Line: " << span.line << ", Cursor: " << span.cur << " }";
     return stream;
 }
 
 std::ostream& operator<<(std::ostream& stream, const cmm::cmc::Token& token) noexcept
 {
-    stream << "{ Type: " << TokenTypeToString(token.type) << " NumberLiteral: " << token.num << " Span: " << token.span;
+    stream << "{ Type: " << TokenTypeToString(token.type) << ", NumberLiteral: " << token.num
+           << ", Span: " << token.span << " }";
     return stream;
 }

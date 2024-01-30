@@ -19,6 +19,7 @@ namespace cmm::cmc {
         // Literals
         NumberLiteral,
         StringLiteral,
+        CharacterLiteral,
 
         // Operators
         SemiColon,
@@ -31,13 +32,25 @@ namespace cmm::cmc {
         Minus,
         Asterisk,
         ForwardSlash,
+        LeftAngleBracket,
+        RightAngleBracket,
+        LeftSquareBracket,
+        RightSquareBracket,
+        DoubleQuote,
+        Quote,
+        Comma,
+        Exclamation,
 
         // Keywords
+        KeywordFn,
+        KeywordImport,
         KeywordIf,
         KeywordElse,
         KeywordElseIf,
         KeywordInt,
         KeywordString,
+        KeywordBool,
+        KeywordChar,
         KeywordWhile,
         KeywordReturn,
         KeywordTrue,
@@ -75,14 +88,16 @@ namespace cmm::cmc {
         Lexer(const std::string_view source);
 
     public:
-        std::optional<Token> NextToken() noexcept;
+        std::optional<Token> NextToken();
 
     private:
-        std::optional<char> CurrentChar() const noexcept;
-        std::optional<char> Consume() noexcept;
-        i64                 ConsumeNumber() noexcept;
-        std::string         ConsumeIdentifier() noexcept;
-        TokenType           ConsumeOperator() noexcept;
+        std::optional<char>        CurrentChar() const noexcept;
+        std::optional<char>        Consume() noexcept;
+        i64                        ConsumeNumber() noexcept;
+        std::string                ConsumeIdentifier() noexcept;
+        TokenType                  ConsumeOperator() noexcept;
+        std::optional<std::string> ConsumeString() noexcept;
+        bool                       IsIdentifierStart(const char c) const noexcept;
     };
 
 } // namespace cmm::cmc
