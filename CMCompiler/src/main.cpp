@@ -3,7 +3,7 @@
 
 #include <CommonDef.h>
 
-#include "Analyzer/Lexer.h"
+#include "Analyzer/Parser.h"
 
 using namespace cmm::cmc;
 

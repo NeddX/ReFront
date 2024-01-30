@@ -1,0 +1,3 @@
+[submodule "CMCompiler/vendor/ALVM"]
+	path = CMCompiler/vendor/ALVM
+	url = https://github.com/NeddX/ALVM

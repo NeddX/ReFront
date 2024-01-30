@@ -15,15 +15,15 @@ namespace cmm::cmc {
                                      "NumberLiteral", "StringLiteral", "CharacterLiteral",
 
                                      // Operators
-                                     "SemiColon", "Equals", "LeftBrace", "RightBrace", "LeftCurlyBracket",
+                                     "Colon", "SemiColon", "Equals", "LeftBrace", "RightBrace", "LeftCurlyBracket",
                                      "RightCurlyBracket", "Plus", "Minus", "Asterisk", "ForwardSlash",
                                      "LeftAngleBracket", "RightAngleBracket", "LeftSquareBracket", "RightSquareBracket",
                                      "DoubleQuote", "Quote", "Comma", "Exclamation",
 
                                      // Keywords
-                                     "KeywordFn", "KeywordImport", "KeywordIf", "KeywordElse", "KeywordElseIf",
-                                     "KeywordInt", "KeywordString", "KeywordBool", "KeywordChar", "KeywordWhile",
-                                     "KeywordReturn", "KeywordTrue", "KeywordFalse",
+                                     "KeywordLet", "KeywordFn", "KeywordImport", "KeywordIf", "KeywordElse",
+                                     "KeywordElseIf", "KeywordI32", "KeywordI64", "KeywordString", "KeywordBool",
+                                     "KeywordChar", "KeywordWhile", "KeywordReturn", "KeywordTrue", "KeywordFalse",
 
                                      // Eof
                                      "Eof" };
@@ -83,7 +83,9 @@ namespace cmm::cmc {
                 auto ident = ConsumeIdentifier();
 
                 // Check if it's a keyword.
-                if (ident == "fn")
+                if (ident == "let")
+                    current_token.type = TokenType::KeywordLet;
+                else if (ident == "fn")
                     current_token.type = TokenType::KeywordFn;
                 else if (ident == "import")
                     current_token.type = TokenType::KeywordImport;
@@ -92,7 +94,9 @@ namespace cmm::cmc {
                 else if (ident == "else")
                     current_token.type = TokenType::KeywordElse;
                 else if (ident == "i32")
-                    current_token.type = TokenType::KeywordInt;
+                    current_token.type = TokenType::KeywordI32;
+                else if (ident == "i64")
+                    current_token.type = TokenType::KeywordI64;
                 else if (ident == "string")
                     current_token.type = TokenType::KeywordString;
                 else if (ident == "bool")
@@ -240,6 +244,7 @@ namespace cmm::cmc {
         auto c = *Consume();
         switch (c)
         {
+            case ':': return TokenType::Colon;
             case ';': return TokenType::SemiColon;
             case '+': return TokenType::Plus;
             case '-': return TokenType::Minus;
