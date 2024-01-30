@@ -20,11 +20,12 @@ namespace cmm::cmc {
             UserDefined
         };
 
-        enum class StatementType : u8
+        enum class StatementKind : u8
         {
             VariableDecleration,
             FunctionDeclaration,
             FunctionParameter,
+            FunctionParemeterList,
             FundamentalType,
             Initializer,
             Expression,
@@ -35,16 +36,20 @@ namespace cmm::cmc {
 
         struct Type
         {
+        public:
             std::string       name{};
             FundamentalType   ftype{};
             std::vector<Type> fields{}; // For user defined types.
+
+        public:
+            static std::optional<Type> FromToken(const Token& token) noexcept;
         };
 
         struct Statement
         {
             std::string            name{};
-            StatementType          kind{};
-            std::vector<Statement> params{};
+            StatementKind          kind{};
+            std::vector<Statement> children{};
             Type                   type{};
             Token                  token{};
         };
@@ -66,7 +71,8 @@ namespace cmm::cmc {
 
     private:
         std::optional<ast::Statement> ExpectFunctionDecl() noexcept;
-        std::optional<Token>          ConsumeToken() noexcept;
+        std::optional<ast::Statement> ExpectFunctionParameterList() noexcept;
+        std::optional<Token>          Consume() noexcept;
     };
 } // namespace cmm::cmc
 

@@ -244,25 +244,27 @@ namespace cmm::cmc {
         auto c = *Consume();
         switch (c)
         {
-            case ':': return TokenType::Colon;
-            case ';': return TokenType::SemiColon;
-            case '+': return TokenType::Plus;
-            case '-': return TokenType::Minus;
-            case '*': return TokenType::Asterisk;
-            case '/': return TokenType::ForwardSlash;
-            case '=': return TokenType::Equals;
-            case '(': return TokenType::LeftBrace;
-            case ')': return TokenType::RightBrace;
-            case '{': return TokenType::LeftCurlyBracket;
-            case '}': return TokenType::RightCurlyBracket;
-            case '<': return TokenType::LeftAngleBracket;
-            case '>': return TokenType::RightAngleBracket;
-            case '[': return TokenType::LeftSquareBracket;
-            case ']': return TokenType::RightSquareBracket;
-            case '"': return TokenType::DoubleQuote;
-            case '\'': return TokenType::Quote;
-            case ',': return TokenType::Comma;
-            case '!': return TokenType::Exclamation;
+            using enum TokenType;
+
+            case ':': return Colon;
+            case ';': return SemiColon;
+            case '+': return Plus;
+            case '-': return Minus;
+            case '*': return Asterisk;
+            case '/': return ForwardSlash;
+            case '=': return Equals;
+            case '(': return LeftBrace;
+            case ')': return RightBrace;
+            case '{': return LeftCurlyBracket;
+            case '}': return RightCurlyBracket;
+            case '<': return LeftAngleBracket;
+            case '>': return RightAngleBracket;
+            case '[': return LeftSquareBracket;
+            case ']': return RightSquareBracket;
+            case '"': return DoubleQuote;
+            case '\'': return Quote;
+            case ',': return Comma;
+            case '!': return Exclamation;
             default: break;
         }
         return TokenType::None;

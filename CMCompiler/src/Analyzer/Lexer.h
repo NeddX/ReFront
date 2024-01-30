@@ -9,7 +9,7 @@
 #include <CommonDef.h>
 
 namespace cmm::cmc {
-    enum class TokenType
+    enum class TokenType : u32
     {
         None,
 
@@ -81,30 +81,32 @@ namespace cmm::cmc {
 
     public:
         // Few handy methods to make parsing easier.
-        bool IsValid() const noexcept { return type == TokenType::None; }
+        bool IsValid() const noexcept { return type != TokenType::None && type != TokenType::Eof; }
         bool IsOperator() const noexcept
         {
             switch (type)
             {
-                case TokenType::Colon:
-                case TokenType::SemiColon:
-                case TokenType::Equals:
-                case TokenType::LeftBrace:
-                case TokenType::RightBrace:
-                case TokenType::LeftCurlyBracket:
-                case TokenType::RightCurlyBracket:
-                case TokenType::Plus:
-                case TokenType::Minus:
-                case TokenType::Asterisk:
-                case TokenType::ForwardSlash:
-                case TokenType::LeftAngleBracket:
-                case TokenType::RightAngleBracket:
-                case TokenType::LeftSquareBracket:
-                case TokenType::RightSquareBracket:
-                case TokenType::DoubleQuote:
-                case TokenType::Quote:
-                case TokenType::Comma:
-                case TokenType::Exclamation: return true;
+                using enum TokenType;
+
+                case Colon:
+                case SemiColon:
+                case Equals:
+                case LeftBrace:
+                case RightBrace:
+                case LeftCurlyBracket:
+                case RightCurlyBracket:
+                case Plus:
+                case Minus:
+                case Asterisk:
+                case ForwardSlash:
+                case LeftAngleBracket:
+                case RightAngleBracket:
+                case LeftSquareBracket:
+                case RightSquareBracket:
+                case DoubleQuote:
+                case Quote:
+                case Comma:
+                case Exclamation: return true;
                 default: break;
             }
             return false;
@@ -113,25 +115,28 @@ namespace cmm::cmc {
         {
             switch (type)
             {
-                case TokenType::KeywordLet:
-                case TokenType::KeywordFn:
-                case TokenType::KeywordImport:
-                case TokenType::KeywordIf:
-                case TokenType::KeywordElse:
-                case TokenType::KeywordElseIf:
-                case TokenType::KeywordI32:
-                case TokenType::KeywordI64:
-                case TokenType::KeywordString:
-                case TokenType::KeywordBool:
-                case TokenType::KeywordChar:
-                case TokenType::KeywordWhile:
-                case TokenType::KeywordReturn:
-                case TokenType::KeywordTrue:
-                case TokenType::KeywordFalse: return true;
+                using enum TokenType;
+
+                case KeywordLet:
+                case KeywordFn:
+                case KeywordImport:
+                case KeywordIf:
+                case KeywordElse:
+                case KeywordElseIf:
+                case KeywordI32:
+                case KeywordI64:
+                case KeywordString:
+                case KeywordBool:
+                case KeywordChar:
+                case KeywordWhile:
+                case KeywordReturn:
+                case KeywordTrue:
+                case KeywordFalse: return true;
                 default: break;
             }
             return false;
         }
+        std::string_view ToString() const noexcept { return TokenTypeToString(type); }
     };
 
     using TokenList = std::vector<Token>;
