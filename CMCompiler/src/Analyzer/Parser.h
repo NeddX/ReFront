@@ -1,6 +1,7 @@
 #ifndef CMC_ANALYZER_PARSER_H
 #define CMC_ANALYZER_PARSER_H
 
+#include <format>
 #include <unordered_map>
 #include <vector>
 
@@ -19,16 +20,16 @@ namespace cmm::cmc {
             UserDefined
         };
 
-        enum class Operation : u8
-        {
-            LocalFunction,
-            VariableDecleration
-        };
-
         enum class StatementType : u8
         {
-            LocalFunctionStatement,
+            VariableDecleration,
+            FunctionDeclaration,
+            FunctionParameter,
             FundamentalType,
+            Initializer,
+            Expression,
+            FunctionCallExpression,
+            ArgumentListExpression,
             Block
         };
 
@@ -42,36 +43,30 @@ namespace cmm::cmc {
         struct Statement
         {
             std::string            name{};
-            Operation              op{};
+            StatementType          kind{};
             std::vector<Statement> params{};
+            Type                   type{};
             Token                  token{};
-        };
-
-        struct ParameterDefinition
-        {
-            std::string name{};
-            Type        type{};
-        };
-
-        struct FunctionDeclaration
-        {
-            std::string                      name{};
-            Type                             type{};
-            std::vector<ParameterDefinition> params{};
-            std::vector<Statement>           statement{};
         };
     } // namespace ast
 
     class Parser
     {
     private:
-        std::string_view m_Source{};
-        Lexer            m_Lexer{};
+        std::string_view            m_Source{};
+        Lexer                       m_Lexer{};
+        std::optional<Token>        m_CurrentToken{};
+        std::vector<ast::Statement> m_GlobalStatements{};
 
     public:
-        explicit Parser(const std::string_view source);
+        explicit Parser(const std::string_view source) noexcept;
 
     public:
+        std::vector<ast::Statement> Parse() noexcept;
+
+    private:
+        std::optional<ast::Statement> ExpectFunctionDecl() noexcept;
+        std::optional<Token>          ConsumeToken() noexcept;
     };
 } // namespace cmm::cmc
 
