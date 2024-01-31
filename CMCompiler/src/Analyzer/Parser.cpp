@@ -1,13 +1,21 @@
 #include "Parser.h"
 
+#include <fmt/core.h>
+
 // TODO: Improve and instead use exceptions.
 #define CompileError(token, ...)                                                                                       \
-    std::cerr << std::format("Compile Error @ line ({}, {}): ", (token).span.line, (token).span.cur)                   \
-              << std::format(__VA_ARGS__) << std::endl;                                                                \
+    std::cerr << fmt::format("Compile Error @ line ({}, {}): ", (token).span.line, (token).span.cur)                   \
+              << fmt::format(__VA_ARGS__) << std::endl;                                                                \
     std::exit(-1);
 
 namespace cmm::cmc {
     using namespace ast;
+
+    Type Type::Integer32 = Type{ .name = "Integer32", .ftype = FundamentalType::Integer32 };
+    Type Type::Integer64 = Type{ .name = "Integer64", .ftype = FundamentalType::Integer64 };
+    Type Type::String    = Type{ .name = "CString", .ftype = FundamentalType::String };
+    Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character };
+    Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean };
 
     std::optional<Type> Type::FromToken(const Token& token) noexcept
     {
@@ -246,7 +254,7 @@ namespace cmm::cmc {
     std::vector<Statement> Parser::ParseFunctionBody()
     {
         std::vector<ast::Statement> stmts{};
-        while (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type != TokenType::RightAngleBracket)
+        while (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type != TokenType::RightCurlyBrace)
         {
             auto stmt = ExpectLocalFunctionStatement();
             if (stmt)
@@ -261,6 +269,146 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectLocalFunctionStatement()
     {
+        auto result = ExpectVariableDeclaration();
+        if (result)
+            return result;
+
+        result = ExpectKeyword();
+        if (result)
+            return result;
+
+        result = ExpectExpression();
+        if (result)
+        {
+            if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::SemiColon)
+                return result;
+            else
+            {
+                CompileError(*m_CurrentToken, "Expected a semicolon but got {} instead.",
+                             m_CurrentToken.value().ToString());
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectVariableDeclaration()
+    {
+        return std::nullopt;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectKeyword()
+    {
+        // If our token is valid and an actual keyword (obviously).
+        if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().IsKeyword())
+        {
+            switch (m_CurrentToken.value().type)
+            {
+                using enum TokenType;
+
+                case KeywordReturn: {
+                    // Consume the return token.
+                    Consume();
+
+                    // The return statement.
+                    Statement stmt{};
+                    stmt.kind = StatementKind::Return;
+
+                    // If an expression follows our return statement.
+                    auto exp = ExpectExpression();
+                    if (exp)
+                        stmt.children.push_back(std::move(*exp));
+
+                    // Check for the semicolon of course.
+                    if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::SemiColon)
+                    {
+                        // Consume the semicolon.
+                        Consume();
+                        return stmt;
+                    }
+                    else
+                    {
+                        CompileError(*m_CurrentToken, "Expected a semicolon after the return statement.");
+                    }
+                    break;
+                }
+                default: break;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Statement> Parser::ExpectExpression()
+    {
+        auto result = ExpectLiteral();
+        if (result)
+            return result;
+
+        result = ExpectIdentifierName();
+        if (result)
+            return result;
+
+        return std::nullopt;
+    }
+
+    std::optional<Statement> Parser::ExpectLiteral()
+    {
+        if (m_CurrentToken.value().IsValid())
+        {
+            switch (m_CurrentToken.value().type)
+            {
+                using enum TokenType;
+
+                case NumberLiteral: {
+                    auto      token = *Consume();
+                    Statement stmt{};
+                    stmt.kind  = StatementKind::LiteralExpression;
+                    stmt.type  = Type::Integer64;
+                    stmt.token = std::move(token);
+                    return stmt;
+                }
+                case StringLiteral: {
+                    auto      token = *Consume();
+                    Statement stmt{};
+                    stmt.kind  = StatementKind::LiteralExpression;
+                    stmt.type  = Type::String;
+                    stmt.token = std::move(token);
+                    return stmt;
+                }
+                case CharacterLiteral: {
+                    auto      token = *Consume();
+                    Statement stmt{};
+                    stmt.kind  = StatementKind::LiteralExpression;
+                    stmt.type  = Type::Character;
+                    stmt.token = std::move(token);
+                    return stmt;
+                }
+                case KeywordTrue:
+                case KeywordFalse: {
+                    auto      token = *Consume();
+                    Statement stmt{};
+                    stmt.kind  = StatementKind::LiteralExpression;
+                    stmt.type  = Type::Boolean;
+                    stmt.token = std::move(token);
+                    return stmt;
+                }
+                default: break;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Statement> Parser::ExpectIdentifierName()
+    {
+        if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::Identifier)
+        {
+            // Consume the identifier token.
+            auto token = *Consume();
+
+            Statement stmt{};
+            stmt.kind = StatementKind::IdentifierName;
+            stmt.name = token.span.text;
+        }
         return std::nullopt;
     }
 } // namespace cmm::cmc

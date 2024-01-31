@@ -5,6 +5,8 @@
 
 #include "Analyzer/Parser.h"
 
+#include <nlohmann/json.hpp>
+
 using namespace cmm::cmc;
 
 int main(int argc, const char* argv[])
@@ -17,6 +19,8 @@ int main(int argc, const char* argv[])
             auto src    = std::string((std::istreambuf_iterator<char>(fs)), (std::istreambuf_iterator<char>()));
             auto parser = Parser(src);
             auto tree   = parser.Parse();
+            nlohmann::ordered_json json = tree;
+            std::cout << std::setw(4) << json << std::endl;
         }
         else
         {

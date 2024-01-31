@@ -1,3 +1,9 @@
 [submodule "CMCompiler/vendor/ALVM"]
 	path = CMCompiler/vendor/ALVM
 	url = https://github.com/NeddX/ALVM
+[submodule "CMCompiler/vendor/nlohmann_json"]
+	path = CMCompiler/vendor/nlohmann_json
+	url = https://github.com/nlohmann/json
+[submodule "CMCompiler/vendor/fmt"]
+	path = CMCompiler/vendor/fmt
+	url = https://github.com/fmtlib/fmt

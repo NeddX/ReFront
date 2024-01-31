@@ -2,6 +2,7 @@
 #define CMC_ANALYZER_LEXER_H
 
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -165,6 +166,87 @@ namespace cmm::cmc {
     };
 
 } // namespace cmm::cmc
+
+namespace nlohmann {
+    template <>
+    struct adl_serializer<cmm::cmc::TokenType>
+    {
+        static void to_json(ordered_json& j, const cmm::cmc::TokenType& e)
+        {
+            switch (e)
+            {
+                using enum cmm::cmc::TokenType;
+
+                case None: j = "None"; break;
+                case Identifier: j = "Identifier"; break;
+                case NumberLiteral: j = "NumberLiteral"; break;
+                case StringLiteral: j = "StringLiteral"; break;
+                case CharacterLiteral: j = "CharacterLiteral"; break;
+                case Colon: j = "Colon"; break;
+                case SemiColon: j = "SemiColon"; break;
+                case Equals: j = "Equals"; break;
+                case LeftBrace: j = "LeftBrace"; break;
+                case RightBrace: j = "RightBrace"; break;
+                case LeftCurlyBrace: j = "LeftCurlyBrace"; break;
+                case RightCurlyBrace: j = "RightCurlyBrace"; break;
+                case Plus: j = "Plus"; break;
+                case Minus: j = "Minus"; break;
+                case Asterisk: j = "Asterisk"; break;
+                case ForwardSlash: j = "ForwardSlash"; break;
+                case LeftAngleBracket: j = "LeftAngleBracket"; break;
+                case RightAngleBracket: j = "RightAngleBracket"; break;
+                case LeftSquareBracket: j = "LeftSquareBracket"; break;
+                case RightSquareBracket: j = "RightSquareBracket"; break;
+                case DoubleQuote: j = "DoubleQuote"; break;
+                case Quote: j = "Quote"; break;
+                case Comma: j = "Comma"; break;
+                case Exclamation: j = "Exclamation"; break;
+                case KeywordLet: j = "KeywordLet"; break;
+                case KeywordFn: j = "KeywordFn"; break;
+                case KeywordImport: j = "KeywordImport"; break;
+                case KeywordIf: j = "KeywordIf"; break;
+                case KeywordElse: j = "KeywordElse"; break;
+                case KeywordElseIf: j = "KeywordElseIf"; break;
+                case KeywordI32: j = "KeywordI32"; break;
+                case KeywordI64: j = "KeywordI64"; break;
+                case KeywordString: j = "KeywordString"; break;
+                case KeywordBool: j = "KeywordBool"; break;
+                case KeywordChar: j = "KeywordChar"; break;
+                case KeywordWhile: j = "KeywordWhile"; break;
+                case KeywordReturn: j = "KeywordReturn"; break;
+                case KeywordTrue: j = "KeywordTrue"; break;
+                case KeywordFalse: j = "KeywordFalse"; break;
+                case Eof: j = "Eof"; break;
+                default: j = "Unknown"; break;
+            }
+        }
+
+        // Do not need a from_json() for now.
+    };
+
+    template <>
+    struct adl_serializer<cmm::cmc::TextSpan>
+    {
+        static void to_json(ordered_json& j, const cmm::cmc::TextSpan& t)
+        {
+            j["line"] = t.line;
+            j["cur"]  = t.cur;
+            j["text"] = t.text;
+        }
+    };
+
+    template <>
+    struct adl_serializer<cmm::cmc::Token>
+    {
+        static void to_json(ordered_json& j, const cmm::cmc::Token& t)
+        {
+            j["type"] = t.type;
+            j["span"] = t.span;
+            j["num"]  = t.num;
+        }
+    };
+
+} // namespace nlohmann
 
 std::ostream& operator<<(std::ostream& stream, const cmm::cmc::TextSpan& span) noexcept;
 std::ostream& operator<<(std::ostream& stream, const cmm::cmc::Token& token) noexcept;
