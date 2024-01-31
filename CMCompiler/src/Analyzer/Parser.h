@@ -67,11 +67,13 @@ namespace cmm::cmc {
         explicit Parser(const std::string_view source) noexcept;
 
     public:
-        std::vector<ast::Statement> Parse() noexcept;
+        std::vector<ast::Statement> Parse();
 
     private:
-        std::optional<ast::Statement> ExpectFunctionDecl() noexcept;
-        std::optional<ast::Statement> ExpectFunctionParameterList() noexcept;
+        std::optional<ast::Statement> ExpectFunctionDecl();
+        ast::Statement                ExpectFunctionParameterList();
+        std::vector<ast::Statement>   ParseFunctionBody();
+        std::optional<ast::Statement> ExpectLocalFunctionStatement();
         std::optional<Token>          Consume() noexcept;
     };
 } // namespace cmm::cmc

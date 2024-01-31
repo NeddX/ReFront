@@ -255,8 +255,8 @@ namespace cmm::cmc {
             case '=': return Equals;
             case '(': return LeftBrace;
             case ')': return RightBrace;
-            case '{': return LeftCurlyBracket;
-            case '}': return RightCurlyBracket;
+            case '{': return LeftCurlyBrace;
+            case '}': return RightCurlyBrace;
             case '<': return LeftAngleBracket;
             case '>': return RightAngleBracket;
             case '[': return LeftSquareBracket;

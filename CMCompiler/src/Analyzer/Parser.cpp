@@ -1,5 +1,11 @@
 #include "Parser.h"
 
+// TODO: Improve and instead use exceptions.
+#define CompileError(token, ...)                                                                                       \
+    std::cerr << std::format("Compile Error @ line ({}, {}): ", (token).span.line, (token).span.cur)                   \
+              << std::format(__VA_ARGS__) << std::endl;                                                                \
+    std::exit(-1);
+
 namespace cmm::cmc {
     using namespace ast;
 
@@ -18,20 +24,11 @@ namespace cmm::cmc {
         return std::nullopt;
     }
 
-    // TODO: Improve and instead use exceptions.
-    template <typename... TArgs>
-    void CompileError(const Token& token, const char* fmt, TArgs&&... args)
-    {
-        std::cerr << std::format("Compile Error @ line ({}, {}): ", token.span.line, token.span.cur)
-                  << std::format(fmt, std::forward<TArgs>(args)...) << std::endl;
-        std::exit(-1);
-    }
-
     Parser::Parser(const std::string_view source) noexcept : m_Source(source)
     {
     }
 
-    std::vector<Statement> Parser::Parse() noexcept
+    std::vector<Statement> Parser::Parse()
     {
         m_Lexer = Lexer(m_Source);
         for (m_CurrentToken = m_Lexer.NextToken();
@@ -51,7 +48,7 @@ namespace cmm::cmc {
         return current;
     }
 
-    std::optional<Statement> Parser::ExpectFunctionDecl() noexcept
+    std::optional<Statement> Parser::ExpectFunctionDecl()
     {
         if (m_CurrentToken.value().type == TokenType::KeywordFn)
         {
@@ -61,7 +58,7 @@ namespace cmm::cmc {
             // Our function declaration statement.
             Statement func_stmt{};
 
-            // If we have a valid token.
+            // If the following token is an identifier.
             if (m_CurrentToken.value().type == TokenType::Identifier)
             {
                 // Consume the identifier.
@@ -69,9 +66,82 @@ namespace cmm::cmc {
                 func_stmt.kind  = StatementKind::FunctionDeclaration;
                 func_stmt.token = std::move(prev_token);
 
+                // Parse possible parameter list, if there's none then our parameter list statement will just be empty.
                 auto param_list = ExpectFunctionParameterList();
-                if (param_list.has_value())
-                    func_stmt.children.push_back(std::move(func_stmt));
+                func_stmt.children.push_back(std::move(param_list));
+
+                // Parse the possible return type or a function scope start.
+                if (m_CurrentToken.value().IsValid())
+                {
+                    // Parse the possible arrow return type specifier.
+                    if (m_CurrentToken.value().type == TokenType::Minus)
+                    {
+                        // Consume the dash.
+                        Consume();
+
+                        if (m_CurrentToken.value().IsValid() &&
+                            m_CurrentToken.value().type == TokenType::RightAngleBracket)
+                        {
+                            // Consume the arrow.
+                            Consume();
+
+                            auto type_opt = Type::FromToken(*m_CurrentToken);
+                            if (type_opt)
+                            {
+                                // Consume the type.
+                                Consume();
+                                func_stmt.type = std::move(*type_opt);
+                            }
+                            else
+                            {
+                                CompileError(*m_CurrentToken, "Unknown type '{}'.", m_CurrentToken.value().span.text);
+                            }
+                        }
+                        else
+                        {
+                            CompileError(*m_CurrentToken, "Expected an arrow return type specifier.");
+                        }
+                    }
+
+                    // Parse the function's scope.
+                    if (m_CurrentToken.value().type == TokenType::LeftCurlyBrace)
+                    {
+                        // Consume the left curly brace.
+                        Consume();
+
+                        // Our scope statement.
+                        Statement block_scope{};
+                        block_scope.kind = StatementKind::Block;
+
+                        // Parse the function's statements.
+                        auto body_stmts      = ParseFunctionBody();
+                        block_scope.children = std::move(body_stmts);
+
+                        // After parsing the function body we should be left with just a right curly brace so just
+                        // consume it and finally, end the function declaration.
+                        if (m_CurrentToken.value().IsValid() &&
+                            m_CurrentToken.value().type == TokenType::RightCurlyBrace)
+                        {
+                            Consume();
+                            func_stmt.children.push_back(std::move(block_scope));
+                        }
+                        else
+                        {
+                            CompileError(*m_CurrentToken, "Expected a closing curly brace but got a {} instead.",
+                                         m_CurrentToken.value().ToString());
+                        }
+                    }
+                    else
+                    {
+                        CompileError(*m_CurrentToken, "Expected a function scope start but got a {} instead.",
+                                     m_CurrentToken.value().ToString());
+                    }
+                }
+                else
+                {
+                    CompileError(*m_CurrentToken,
+                                 "Expected a function return type specifier or a function scope start.");
+                }
 
                 return func_stmt;
             }
@@ -84,7 +154,7 @@ namespace cmm::cmc {
         return std::nullopt;
     }
 
-    std::optional<Statement> Parser::ExpectFunctionParameterList() noexcept
+    Statement Parser::ExpectFunctionParameterList()
     {
         Statement params{};
         if (m_CurrentToken.value().type == TokenType::LeftBrace)
@@ -161,15 +231,36 @@ namespace cmm::cmc {
             }
             else
             {
+                // Consume the right brace.
+                Consume();
                 params.kind = StatementKind::FunctionParemeterList;
-                if (!params.children.empty())
-                    return params;
             }
         }
         else
         {
             CompileError(*m_CurrentToken, "Expected a parameter list.");
         }
+        return params;
+    }
+
+    std::vector<Statement> Parser::ParseFunctionBody()
+    {
+        std::vector<ast::Statement> stmts{};
+        while (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type != TokenType::RightAngleBracket)
+        {
+            auto stmt = ExpectLocalFunctionStatement();
+            if (stmt)
+                stmts.push_back(std::move(*stmt));
+            else
+            {
+                CompileError(*m_CurrentToken, "Invalid statement.");
+            }
+        }
+        return stmts;
+    }
+
+    std::optional<Statement> Parser::ExpectLocalFunctionStatement()
+    {
         return std::nullopt;
     }
 } // namespace cmm::cmc

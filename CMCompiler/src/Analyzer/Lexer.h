@@ -27,8 +27,8 @@ namespace cmm::cmc {
         Equals,
         LeftBrace,
         RightBrace,
-        LeftCurlyBracket,
-        RightCurlyBracket,
+        LeftCurlyBrace,
+        RightCurlyBrace,
         Plus,
         Minus,
         Asterisk,
@@ -93,8 +93,8 @@ namespace cmm::cmc {
                 case Equals:
                 case LeftBrace:
                 case RightBrace:
-                case LeftCurlyBracket:
-                case RightCurlyBracket:
+                case LeftCurlyBrace:
+                case RightCurlyBrace:
                 case Plus:
                 case Minus:
                 case Asterisk:
