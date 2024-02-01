@@ -11,11 +11,35 @@
 namespace cmm::cmc {
     using namespace ast;
 
-    Type Type::Integer32 = Type{ .name = "Integer32", .ftype = FundamentalType::Integer32 };
-    Type Type::Integer64 = Type{ .name = "Integer64", .ftype = FundamentalType::Integer64 };
-    Type Type::String    = Type{ .name = "CString", .ftype = FundamentalType::String };
-    Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character };
-    Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean };
+    namespace ast {
+        Type Type::Integer32 = Type{ .name = "Integer32", .ftype = FundamentalType::Integer32 };
+        Type Type::Integer64 = Type{ .name = "Integer64", .ftype = FundamentalType::Integer64 };
+        Type Type::String    = Type{ .name = "CString", .ftype = FundamentalType::String };
+        Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character };
+        Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean };
+
+        bool Type::IsArray() const noexcept
+        {
+            return length > 0;
+        }
+
+        bool Type::operator==(const Type& type) const noexcept
+        {
+            return this->ftype == type.ftype && this->name == type.name && this->length == type.length;
+        }
+    } // namespace ast
+
+    void SymbolTable::AddSymbol(Symbol symbol) noexcept
+    {
+        m_Symbols[symbol.name] = std::move(symbol);
+    }
+
+    std::optional<Symbol> SymbolTable::GetSymbol(const std::string& name) noexcept
+    {
+        if (m_Symbols.contains(name))
+            return m_Symbols[name];
+        return std::nullopt;
+    }
 
     std::optional<Type> Type::FromToken(const Token& token) noexcept
     {
@@ -23,9 +47,11 @@ namespace cmm::cmc {
         {
             using enum TokenType;
 
-            case KeywordI32: return Type{ .name = "i32", .ftype = FundamentalType::Integer32 };
-            case KeywordI64: return Type{ .name = "i64", .ftype = FundamentalType::Integer64 };
-            case KeywordString: return Type{ .name = "string", .ftype = FundamentalType::String };
+            case KeywordI32: return Type::Integer32;
+            case KeywordI64: return Type::Integer64;
+            case KeywordString: return Type::String;
+            case KeywordChar: return Type::Character;
+            case KeywordBool: return Type::Boolean;
             case Identifier: return Type{ .name = token.span.text, .ftype = FundamentalType::UserDefined };
             default: break;
         }
@@ -70,9 +96,9 @@ namespace cmm::cmc {
             if (m_CurrentToken.value().type == TokenType::Identifier)
             {
                 // Consume the identifier.
-                prev_token      = *Consume();
-                func_stmt.kind  = StatementKind::FunctionDeclaration;
-                func_stmt.token = std::move(prev_token);
+                prev_token     = *Consume();
+                func_stmt.kind = StatementKind::FunctionDeclaration;
+                func_stmt.tokens.push_back(std::move(prev_token));
 
                 // Parse possible parameter list, if there's none then our parameter list statement will just be empty.
                 auto param_list = ExpectFunctionParameterList();
@@ -111,38 +137,17 @@ namespace cmm::cmc {
                         }
                     }
 
-                    // Parse the function's scope.
-                    if (m_CurrentToken.value().type == TokenType::LeftCurlyBrace)
-                    {
-                        // Consume the left curly brace.
+                    // The optional colon for one liners.
+                    if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::Colon)
+                        // Consume the token.
                         Consume();
 
-                        // Our scope statement.
-                        Statement block_scope{};
-                        block_scope.kind = StatementKind::Block;
-
-                        // Parse the function's statements.
-                        auto body_stmts      = ParseFunctionBody();
-                        block_scope.children = std::move(body_stmts);
-
-                        // After parsing the function body we should be left with just a right curly brace so just
-                        // consume it and finally, end the function declaration.
-                        if (m_CurrentToken.value().IsValid() &&
-                            m_CurrentToken.value().type == TokenType::RightCurlyBrace)
-                        {
-                            Consume();
-                            func_stmt.children.push_back(std::move(block_scope));
-                        }
-                        else
-                        {
-                            CompileError(*m_CurrentToken, "Expected a closing curly brace but got a {} instead.",
-                                         m_CurrentToken.value().ToString());
-                        }
-                    }
+                    auto body_stmt = ExpectLocalStatement();
+                    if (body_stmt)
+                        func_stmt.children.push_back(std::move(*body_stmt));
                     else
                     {
-                        CompileError(*m_CurrentToken, "Expected a function scope start but got a {} instead.",
-                                     m_CurrentToken.value().ToString());
+                        CompileError(*m_CurrentToken, "Expected a statement.");
                     }
                 }
                 else
@@ -170,21 +175,21 @@ namespace cmm::cmc {
             // Consume the left brace.
             auto prev_token = *Consume();
 
+            // Our possible parameter.
+            Statement parameter{};
+
             // If our token is not eof.
             while (m_CurrentToken.value().IsValid())
             {
-                // Our possible parameter.
-                Statement parameter{};
-
                 // Possible parameter definition.
                 if (m_CurrentToken.value().type == TokenType::Identifier)
                 {
                     // Consume the identifier.
                     auto ident = *Consume();
 
-                    parameter.name  = ident.span.text;
-                    parameter.kind  = StatementKind::FunctionParameter;
-                    parameter.token = ident;
+                    parameter.name = ident.span.text;
+                    parameter.kind = StatementKind::FunctionParameter;
+                    parameter.tokens.push_back(std::move(ident));
 
                     // Next, we expect the token to be valid and a colon because
                     // types are defined in the following syntax: identifier: type, ...
@@ -203,8 +208,8 @@ namespace cmm::cmc {
                             // Try and create a type from the token. If we get a nothing then it was not a type
                             // so throw a compile error and exit.
                             auto type_opt = Type::FromToken(type_token);
-                            if (type_opt.has_value())
-                                parameter.type = *type_opt;
+                            if (type_opt)
+                                parameter.type = std::move(*type_opt);
                             else
                             {
                                 CompileError(type_token, "Expected a type, instead got a {}", type_token.ToString());
@@ -219,17 +224,23 @@ namespace cmm::cmc {
                     {
                         CompileError(*m_CurrentToken, "Expected a type specifier for the parameter.");
                     }
+
+                    // Finally, push our parameter statement to our parameter list.
+                    params.children.push_back(std::move(parameter));
                 }
                 else if (m_CurrentToken.value().type == TokenType::Comma)
                 {
-                    // More parameters so just progress forward and push our current function parameter.
+                    // There are more parameters so just progress forward.
                     Consume();
-                    params.children.push_back(std::move(parameter));
                 }
                 else if (m_CurrentToken.value().type == TokenType::RightBrace)
                 {
                     // We've reached the end so terminate.
                     break;
+                }
+                else
+                {
+                    CompileError(*m_CurrentToken, "Expected a function parameter.");
                 }
             }
 
@@ -251,32 +262,24 @@ namespace cmm::cmc {
         return params;
     }
 
-    std::vector<Statement> Parser::ParseFunctionBody()
+    std::optional<Statement> Parser::ExpectLocalStatement()
     {
-        std::vector<ast::Statement> stmts{};
-        while (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type != TokenType::RightCurlyBrace)
-        {
-            auto stmt = ExpectLocalFunctionStatement();
-            if (stmt)
-                stmts.push_back(std::move(*stmt));
-            else
-            {
-                CompileError(*m_CurrentToken, "Invalid statement.");
-            }
-        }
-        return stmts;
-    }
-
-    std::optional<Statement> Parser::ExpectLocalFunctionStatement()
-    {
-        auto result = ExpectVariableDeclaration();
+        // Check for a compound statement.
+        auto result = ExpectBlockStatement();
         if (result)
             return result;
 
+        // Else check for a variable declaration statement.
+        result = ExpectVariableDeclaration();
+        if (result)
+            return result;
+
+        // Else check for a keyword statement.
         result = ExpectKeyword();
         if (result)
             return result;
 
+        // Else just check for a possible expression statement.
         result = ExpectExpression();
         if (result)
         {
@@ -292,8 +295,212 @@ namespace cmm::cmc {
         return std::nullopt;
     }
 
+    std::optional<ast::Statement> Parser::ExpectBlockStatement()
+    {
+        // Check for a start of a block statement.
+        if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::LeftCurlyBrace)
+        {
+            // Create a new symbol table for our compound statement and push it onto the stack.
+            m_SymbolTableStack.emplace();
+
+            // Consume the left curly brace.
+            auto brace_token = *Consume();
+
+            // Our block statement.
+            Statement block_stmt;
+            block_stmt.kind = StatementKind::Block;
+            block_stmt.tokens.push_back(std::move(brace_token));
+
+            // Iterate through the tokens until we hit a closing curly brace.
+            while (m_CurrentToken.value().type != TokenType::RightCurlyBrace)
+            {
+                // If we meet a EOF instead of a closing curly brace.
+                if (!m_CurrentToken.value().IsValid())
+                {
+                    CompileError(*m_CurrentToken, "Expected a closing curly brace to end the block statement.");
+                }
+                else
+                {
+                    // Recursevly parse statements and append them to our block statement (if any).
+                    auto stmt = ExpectLocalStatement();
+                    if (stmt)
+                        block_stmt.children.push_back(std::move(*stmt));
+                }
+            }
+
+            // Consume the closing curly brace.
+            brace_token = *Consume();
+            block_stmt.tokens.push_back(std::move(brace_token));
+
+            // Pop our compound statement's symbol table out and finally return our compound statement.
+            m_SymbolTableStack.pop();
+            return block_stmt;
+        }
+        return std::nullopt;
+    }
+
     std::optional<ast::Statement> Parser::ExpectVariableDeclaration()
     {
+        if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::KeywordLet)
+        {
+            // Consume our let token.
+            Token let_token = *Consume();
+            Token ident_token{};
+
+            // Our variable declaration statement.
+            Statement var_decl{};
+            var_decl.kind = StatementKind::VariableDeclaration;
+            var_decl.tokens.push_back(std::move(let_token));
+
+            // The following token must be valid and an identifier.
+            if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::Identifier)
+            {
+                ident_token   = *Consume();
+                var_decl.name = ident_token.span.text;
+                var_decl.tokens.push_back(ident_token);
+            }
+            else
+            {
+                CompileError(*m_CurrentToken, "Expected an identifier after the let keyword.");
+            }
+
+            // The token following the identifier must be a colon type specifier.
+            if (auto token = Consume(); !token.value().IsValid() || token.value().type != TokenType::Colon)
+            {
+                CompileError(*m_CurrentToken, "Expected a colon type specifier.");
+            }
+
+            // The following token now must be a type.
+            if (m_CurrentToken.value().IsValid())
+            {
+                // Consume our type token then try and create type from it.
+                auto type_token = *Consume();
+                auto type_opt   = Type::FromToken(type_token);
+
+                if (type_opt)
+                {
+                    // Check if it is a possible array.
+                    if (m_CurrentToken.value().type == TokenType::LeftSquareBracket)
+                    {
+                        // Consume the opening square bracket.
+                        Consume();
+
+                        // The following token must be a length specifier in the form of a number literal.
+                        if (m_CurrentToken.value().type == TokenType::NumberLiteral)
+                            type_opt.value().length = Consume().value().num;
+                        else
+                        {
+                            CompileError(*m_CurrentToken,
+                                         "Expected an array length specifier in the form of an integer literal.");
+                        }
+
+                        // The following token must be a closing square bracket.
+                        if (auto rsq_bracket = *Consume(); rsq_bracket.type != TokenType::RightSquareBracket)
+                        {
+                            CompileError(rsq_bracket, "Expected a closing square bracket.");
+                        }
+                    }
+                    var_decl.type = std::move(*type_opt);
+                }
+                else
+                {
+                    CompileError(*m_CurrentToken, "Unknown type {}.", type_token.span.text);
+                }
+            }
+            else
+            {
+                CompileError(*m_CurrentToken, "Expected a type.");
+            }
+
+            // Now we either have a semicolon or initializer.
+            if (m_CurrentToken.value().IsValid())
+            {
+                // It is an initializer.
+                if (m_CurrentToken.value().type == TokenType::Equals)
+                {
+                    // Consume the equals.
+                    auto equals_token = *Consume();
+
+                    // Our initializer statement.
+                    Statement init_stmt{};
+                    init_stmt.tokens.push_back(std::move(equals_token));
+                    init_stmt.kind = StatementKind::Initializer;
+
+                    // The initializer expression.
+                    auto init_expr = ExpectExpression();
+                    if (init_expr)
+                    {
+                        // Check if our variable is an array.
+                        if (var_decl.type.IsArray())
+                        {
+                            // If the lengths mismatch then it's an error.
+                            if (init_expr.value().children.size() != var_decl.type.length)
+                            {
+                                CompileError(init_expr.value().tokens[0],
+                                             "'{}' is an array of {} elements but is initialized with an initializer "
+                                             "list of length {}.",
+                                             var_decl.name, var_decl.type.length, init_expr.value().children.size());
+                            }
+
+                            // Check if there's a type mismatch.
+                            for (const auto& e : init_expr.value().children)
+                            {
+                                // Compare the ELEMENT types.
+                                if (e.type.ftype != var_decl.type.ftype)
+                                {
+                                    CompileError(
+                                        e.tokens.at(0),
+                                        "Type mistmatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                        e.type.name, var_decl.type.name);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Check if there's a type mismatch between the initializer expression and the variable.
+                            if (init_expr.value().type != var_decl.type)
+                            {
+                                CompileError(init_stmt.tokens[0],
+                                             "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                             init_expr.value().type.name, var_decl.type.name);
+                            }
+                        }
+
+                        // If we reached here then everything is fine so just append our initializer and move on.
+                        init_stmt.children.push_back(std::move(*init_expr));
+                    }
+
+                    // Append our initializer statement.
+                    var_decl.children.push_back(std::move(init_stmt));
+
+                    // Consume and check if the last token is a semicolon or not.
+                    if (auto semi_token = *Consume(); !semi_token.IsValid() || semi_token.type != TokenType::SemiColon)
+                    {
+                        CompileError(semi_token, "Expected a semicolon.");
+                    }
+                }
+                else if (m_CurrentToken.value().type == TokenType::SemiColon)
+                {
+                    // Consume the colon, this is just an uninitialized variable.
+                    Consume();
+                }
+
+                // Check if the variable already exists in our block's symbol table.
+                if (auto sym = m_SymbolTableStack.top().GetSymbol(var_decl.name); sym)
+                {
+                    auto& redecl_token = sym.value().statement.tokens[0];
+                    CompileError(var_decl.tokens[0],
+                                 "Redeclaration of an already existing name {} previously defined @ line ({}, {}).",
+                                 var_decl.name, redecl_token.span.line, redecl_token.span.cur);
+                }
+                else
+                {
+                    // Append our new variable to our symbol table and return it.
+                    m_SymbolTableStack.top().AddSymbol(Symbol{ .name = ident_token.span.text, .statement = var_decl });
+                }
+                return var_decl;
+            }
+        }
         return std::nullopt;
     }
 
@@ -340,21 +547,32 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectExpression()
     {
+        // Check for a literal expression.
         auto result = ExpectLiteral();
         if (result)
             return result;
 
+        // Else check for an identifier expression.
         result = ExpectIdentifierName();
         if (result)
             return result;
+
+        // Else check for an initializer list expression.
+        result = ExpectInitializerList();
+        if (result)
+            return result;
+
+        // more to come!
 
         return std::nullopt;
     }
 
     std::optional<Statement> Parser::ExpectLiteral()
     {
+        // If our token is valid.
         if (m_CurrentToken.value().IsValid())
         {
+            // Check for the type of the literal.
             switch (m_CurrentToken.value().type)
             {
                 using enum TokenType;
@@ -362,34 +580,34 @@ namespace cmm::cmc {
                 case NumberLiteral: {
                     auto      token = *Consume();
                     Statement stmt{};
-                    stmt.kind  = StatementKind::LiteralExpression;
-                    stmt.type  = Type::Integer64;
-                    stmt.token = std::move(token);
+                    stmt.kind = StatementKind::LiteralExpression;
+                    stmt.type = Type::Integer64;
+                    stmt.tokens.push_back(std::move(token));
                     return stmt;
                 }
                 case StringLiteral: {
                     auto      token = *Consume();
                     Statement stmt{};
-                    stmt.kind  = StatementKind::LiteralExpression;
-                    stmt.type  = Type::String;
-                    stmt.token = std::move(token);
+                    stmt.kind = StatementKind::LiteralExpression;
+                    stmt.type = Type::String;
+                    stmt.tokens.push_back(std::move(token));
                     return stmt;
                 }
                 case CharacterLiteral: {
                     auto      token = *Consume();
                     Statement stmt{};
-                    stmt.kind  = StatementKind::LiteralExpression;
-                    stmt.type  = Type::Character;
-                    stmt.token = std::move(token);
+                    stmt.kind = StatementKind::LiteralExpression;
+                    stmt.type = Type::Character;
+                    stmt.tokens.push_back(std::move(token));
                     return stmt;
                 }
                 case KeywordTrue:
                 case KeywordFalse: {
                     auto      token = *Consume();
                     Statement stmt{};
-                    stmt.kind  = StatementKind::LiteralExpression;
-                    stmt.type  = Type::Boolean;
-                    stmt.token = std::move(token);
+                    stmt.kind = StatementKind::LiteralExpression;
+                    stmt.type = Type::Boolean;
+                    stmt.tokens.push_back(std::move(token));
                     return stmt;
                 }
                 default: break;
@@ -400,14 +618,70 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectIdentifierName()
     {
+        // If the current token is infact an identifier.
         if (m_CurrentToken.value().IsValid() && m_CurrentToken.value().type == TokenType::Identifier)
         {
             // Consume the identifier token.
             auto token = *Consume();
 
+            // Create our identifier statement.
             Statement stmt{};
             stmt.kind = StatementKind::IdentifierName;
             stmt.name = token.span.text;
+
+            // Perform a symbol table lookup here perhaps?
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Statement> Parser::ExpectInitializerList()
+    {
+        // Check if the token is infact an opening curly brace.
+        if (m_CurrentToken.value().type == TokenType::LeftCurlyBrace)
+        {
+            // Consume the opening curly brace.
+            auto left_curly = *Consume();
+
+            // Our initializer list statement.
+            Statement init_list{};
+            init_list.kind = StatementKind::InitializerList;
+            init_list.tokens.push_back(std::move(left_curly));
+
+            // Parse the tokens until we hit a closing curly brace.
+            while (m_CurrentToken.value().type != TokenType::RightCurlyBrace)
+            {
+                // Parse the expression element.
+                auto expr = ExpectExpression();
+                if (expr)
+                {
+                    // Either a comma must follow our parsed expression or the initializer list should end, otherwise
+                    // it's a compile error.
+                    if (m_CurrentToken.value().type == TokenType::Comma)
+                        // Consume the comma and move on.
+                        Consume();
+                    else if (m_CurrentToken.value().type != TokenType::RightCurlyBrace)
+                    {
+                        CompileError(*m_CurrentToken, "Expected a closing curly brace.");
+                    }
+                    init_list.children.push_back(std::move(*expr));
+                }
+                else
+                {
+                    CompileError(*m_CurrentToken, "Invalid expression inside of an initializer list.");
+                }
+            }
+
+            // Check if our initializer list was properly established.
+            if (auto closing_curly = *Consume(); closing_curly.IsValid())
+            {
+                // Consume and append our closing curly brace to the initializer list statement.
+                init_list.tokens.push_back(closing_curly);
+                return init_list;
+            }
+            else
+            {
+                CompileError(*m_CurrentToken, "Expected a closing curly brace.");
+            }
         }
         return std::nullopt;
     }

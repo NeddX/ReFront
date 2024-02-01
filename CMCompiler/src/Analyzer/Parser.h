@@ -2,6 +2,7 @@
 #define CMC_ANALYZER_PARSER_H
 
 #include <nlohmann/json.hpp>
+#include <stack>
 #include <vector>
 
 #include "Lexer.h"
@@ -21,13 +22,17 @@ namespace cmm::cmc {
 
         enum class StatementKind : u8
         {
-            VariableDecleration,
+            None,
+            VariableDeclaration,
             FunctionDeclaration,
             FunctionParameter,
             FunctionParemeterList,
-            InitializerList,
+            Initializer,
             FunctionCallExpression,
             ArgumentListExpression,
+
+            ArrayLengthSpecifier,
+            InitializerList,
 
             If,
             ElseIf,
@@ -46,6 +51,7 @@ namespace cmm::cmc {
             std::string       name{};
             FundamentalType   ftype{};
             std::vector<Type> fields{}; // For user defined types.
+            usize             length{};
 
         public:
             static Type Integer32;
@@ -56,6 +62,12 @@ namespace cmm::cmc {
 
         public:
             static std::optional<Type> FromToken(const Token& token) noexcept;
+
+        public:
+            bool IsArray() const noexcept;
+
+        public:
+            bool operator==(const Type& type) const noexcept;
         };
 
         struct Statement
@@ -64,9 +76,25 @@ namespace cmm::cmc {
             StatementKind          kind{};
             std::vector<Statement> children{};
             Type                   type{};
-            Token                  token{};
+            std::vector<Token>     tokens{};
         };
     } // namespace ast
+
+    struct Symbol
+    {
+        std::string    name{};
+        ast::Statement statement;
+    };
+
+    struct SymbolTable
+    {
+    private:
+        std::unordered_map<std::string, Symbol> m_Symbols{};
+
+    public:
+        void                  AddSymbol(Symbol symbol) noexcept;
+        std::optional<Symbol> GetSymbol(const std::string& name) noexcept;
+    };
 
     class Parser
     {
@@ -75,6 +103,7 @@ namespace cmm::cmc {
         Lexer                       m_Lexer{};
         std::optional<Token>        m_CurrentToken{};
         std::vector<ast::Statement> m_GlobalStatements{};
+        std::stack<SymbolTable>     m_SymbolTableStack{};
 
     public:
         explicit Parser(const std::string_view source) noexcept;
@@ -85,13 +114,14 @@ namespace cmm::cmc {
     private:
         std::optional<ast::Statement> ExpectFunctionDecl();
         ast::Statement                ExpectFunctionParameterList();
-        std::vector<ast::Statement>   ParseFunctionBody();
-        std::optional<ast::Statement> ExpectLocalFunctionStatement();
+        std::optional<ast::Statement> ExpectLocalStatement();
+        std::optional<ast::Statement> ExpectBlockStatement();
         std::optional<ast::Statement> ExpectVariableDeclaration();
         std::optional<ast::Statement> ExpectKeyword();
         std::optional<ast::Statement> ExpectExpression();
         std::optional<ast::Statement> ExpectLiteral();
         std::optional<ast::Statement> ExpectIdentifierName();
+        std::optional<ast::Statement> ExpectInitializerList();
         std::optional<Token>          Consume() noexcept;
     };
 } // namespace cmm::cmc
@@ -106,13 +136,16 @@ namespace nlohmann {
             {
                 using enum cmm::cmc::ast::StatementKind;
 
-                case VariableDecleration: j = "VariableDeclaration"; break;
+                case None: j = "None"; break;
+                case VariableDeclaration: j = "VariableDeclaration"; break;
                 case FunctionDeclaration: j = "FunctionDeclaration"; break;
                 case FunctionParameter: j = "FunctionParameter"; break;
                 case FunctionParemeterList: j = "FunctionParameterList"; break;
-                case InitializerList: j = "InitializerList"; break;
+                case Initializer: j = "Initializer"; break;
                 case FunctionCallExpression: j = "FunctionCallExpression"; break;
                 case ArgumentListExpression: j = "ArgumentListExpression"; break;
+                case ArrayLengthSpecifier: j = "ArrayLengthSpecifier"; break;
+                case InitializerList: j = "InitializerList"; break;
                 case If: j = "IfStatement"; break;
                 case ElseIf: j = "ElseIfStatement"; break;
                 case Else: j = "ElseStatement"; break;
@@ -157,6 +190,7 @@ namespace nlohmann {
             j["name"]   = type.name;
             j["ftype"]  = type.ftype;
             j["fields"] = type.fields;
+            j["length"] = type.length;
         }
     };
 
@@ -169,7 +203,7 @@ namespace nlohmann {
             j["kind"]     = s.kind;
             j["children"] = s.children;
             j["type"]     = s.type;
-            j["token"]    = s.token;
+            j["tokens"]   = s.tokens;
         }
     };
 
