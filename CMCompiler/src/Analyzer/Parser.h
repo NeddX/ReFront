@@ -84,40 +84,46 @@ namespace cmm::cmc {
 
         struct Statement
         {
+        public:
             std::string            name{};
             StatementKind          kind{};
             std::vector<Statement> children{};
             Type                   type{};
             std::vector<Token>     tokens{};
+
+        public:
+            std::optional<Token> GetToken(const TokenType& type) const noexcept;
+        };
+
+        using SyntaxTree = std::vector<ast::Statement>;
+
+        struct Symbol
+        {
+            std::string    name{};
+            ast::Statement statement;
+        };
+
+        struct SymbolTable
+        {
+        private:
+            std::unordered_map<std::string, Symbol> m_Symbols{};
+
+        public:
+            void          AddSymbol(Symbol symbol) noexcept;
+            bool          ContainsSymbol(const std::string& name) const noexcept;
+            Symbol&       GetSymbol(const std::string& name) noexcept;
+            const Symbol& GetSymbol(const std::string& name) const noexcept;
         };
     } // namespace ast
-
-    struct Symbol
-    {
-        std::string    name{};
-        ast::Statement statement;
-    };
-
-    struct SymbolTable
-    {
-    private:
-        std::unordered_map<std::string, Symbol> m_Symbols{};
-
-    public:
-        void          AddSymbol(Symbol symbol) noexcept;
-        bool          ContainsSymbol(const std::string& name) const noexcept;
-        Symbol&       GetSymbol(const std::string& name) noexcept;
-        const Symbol& GetSymbol(const std::string& name) const noexcept;
-    };
 
     class Parser
     {
     private:
-        std::string_view            m_Source{};
-        Lexer                       m_Lexer{};
-        std::optional<Token>        m_CurrentToken{};
-        std::vector<ast::Statement> m_GlobalStatements{};
-        std::vector<SymbolTable>    m_SymbolTableStack{};
+        std::string_view              m_Source{};
+        Lexer                         m_Lexer{};
+        std::optional<Token>          m_CurrentToken{};
+        std::vector<ast::Statement>   m_GlobalStatements{};
+        std::vector<ast::SymbolTable> m_SymbolTableStack{};
 
     public:
         explicit Parser(const std::string_view source) noexcept;
@@ -138,6 +144,7 @@ namespace cmm::cmc {
         std::optional<ast::Statement> ExpectInitializerList();
         std::optional<ast::Statement> ExpectAssignment();
         std::optional<ast::Statement> ExpectFunctionCall();
+        std::optional<ast::Statement> ExpectBinaryExpression();
         std::optional<Token>          Consume() noexcept;
         std::optional<Token>          Peek() noexcept;
     };

@@ -17,6 +17,16 @@ namespace cmm::cmc {
         Type Type::String    = Type{ .name = "CString", .ftype = FundamentalType::String };
         Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character };
         Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean };
+
+        std::optional<Token> Statement::GetToken(const TokenType& type) const noexcept
+        {
+            for (const auto& t : tokens)
+            {
+                if (t.type == type)
+                    return t;
+            }
+            return std::nullopt;
+        }
     } // namespace ast
 
     void SymbolTable::AddSymbol(Symbol symbol) noexcept
@@ -262,18 +272,27 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectLocalStatement()
     {
+        // For keywords and block statements we do not want to check for a
+        // semicolon because, well, block statements end with the closing curly
+        // and keywords such as while and if can be a single statement or
+        // be chained with a block statement which like I stated before, ends with a curly brace.
+
         // Check for a compound statement.
         auto result = ExpectBlockStatement();
         if (result)
             return result;
 
+        // Else check for a keyword statement.
+        if (!result)
+        {
+            result = ExpectKeyword();
+            if (result)
+                return result;
+        }
+
         // Else check for a variable declaration statement.
         if (!result)
             result = ExpectVariableDeclaration();
-
-        // Else check for a keyword statement.
-        if (!result)
-            result = ExpectKeyword();
 
         // Else just check for a possible expression statement.
         if (!result)
@@ -618,6 +637,8 @@ namespace cmm::cmc {
                     // Check for the semicolon of course.
                     if (m_CurrentToken->IsValid() && m_CurrentToken.value().type == TokenType::SemiColon)
                     {
+                        // Consume the semicolon.
+                        Consume();
                         return stmt;
                     }
                     else
@@ -640,9 +661,9 @@ namespace cmm::cmc {
             return result;
 
         // Else check if it's an assignment expression.
-        result = ExpectAssignment();
-        if (result)
-            return result;
+        // result = ExpectAssignment();
+        // if (result)
+        //    return result;
 
         // Else check for an initializer list expression.
         result = ExpectInitializerList();
@@ -656,6 +677,11 @@ namespace cmm::cmc {
 
         // Else check for an identifier expression.
         result = ExpectIdentifierName();
+        if (result)
+            return result;
+
+        // Else check for a binary expression.
+        result = ExpectBinaryExpression();
         if (result)
             return result;
 
@@ -855,6 +881,35 @@ namespace cmm::cmc {
 
     std::optional<ast::Statement> Parser::ExpectFunctionCall()
     {
+        return std::nullopt;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectBinaryExpression()
+    {
+        // Get the next token but don't consume.
+        auto op_token = Peek();
+        if (op_token)
+        {
+            // Check if it is an operator.
+            if (op_token->IsOperator())
+            {
+                switch (m_CurrentToken->type)
+                {
+                    using enum TokenType;
+
+                    case Identifier: {
+                        break;
+                    }
+                    case NumberLiteral: {
+                        break;
+                    }
+                    case StringLiteral: {
+                        break;
+                    }
+                    default: break;
+                }
+            }
+        }
         return std::nullopt;
     }
 } // namespace cmm::cmc

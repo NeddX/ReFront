@@ -113,9 +113,15 @@ namespace cmm::cmc {
                 else if (ident == "return")
                     current_token.type = TokenType::KeywordReturn;
                 else if (ident == "false")
+                {
                     current_token.type = TokenType::KeywordFalse;
+                    current_token.num  = 0;
+                }
                 else if (ident == "true")
+                {
                     current_token.type = TokenType::KeywordTrue;
+                    current_token.num  = 1;
+                }
                 else
                     current_token.type = TokenType::Identifier;
             }
