@@ -34,11 +34,16 @@ namespace cmm::cmc {
     {
     }
 
+    std::optional<Token> Lexer::PeekToken()
+    {
+        const auto current_state = *this;
+        auto       token         = NextToken();
+        *this                    = std::move(current_state);
+        return token;
+    }
+
     std::optional<Token> Lexer::NextToken()
     {
-        static usize token_count = 0;
-        static usize line_count  = 1;
-
         // If we've reached the end.
         if (m_CurrentPos == m_Source.size())
         {
@@ -61,7 +66,7 @@ namespace cmm::cmc {
 
             if (*c == '\n')
                 // If it's a line then increment the line count.
-                ++line_count;
+                ++m_LineCount;
 
             // Progress to the next character and update start.
             c     = CurrentChar();
@@ -93,6 +98,8 @@ namespace cmm::cmc {
                     current_token.type = TokenType::KeywordIf;
                 else if (ident == "else")
                     current_token.type = TokenType::KeywordElse;
+                else if (ident == "while")
+                    current_token.type = TokenType::KeywordWhile;
                 else if (ident == "i32")
                     current_token.type = TokenType::KeywordI32;
                 else if (ident == "i64")
@@ -128,10 +135,10 @@ namespace cmm::cmc {
                         {
                             // Since we know it's a string we can just handle it right away and move str into our token
                             // span.
-                            ++token_count;
+                            ++m_TokenCount;
                             current_token.type = TokenType::StringLiteral;
                             current_token.span =
-                                TextSpan{ .line = line_count, .cur = token_count, .text = std::move(*str) };
+                                TextSpan{ .line = m_LineCount, .cur = m_TokenCount, .text = std::move(*str) };
 
                             return current_token;
                         }
@@ -147,10 +154,10 @@ namespace cmm::cmc {
                             if (ec == '\'')
                             {
                                 // Since we know it's a character we can just handle it right away.
-                                ++token_count;
+                                ++m_TokenCount;
                                 current_token.type = TokenType::CharacterLiteral;
                                 current_token.num  = *ec;
-                                current_token.span = TextSpan{ .line = line_count, .cur = token_count };
+                                current_token.span = TextSpan{ .line = m_LineCount, .cur = m_TokenCount };
                                 current_token.span.text += *c;
 
                                 return current_token;
@@ -173,10 +180,10 @@ namespace cmm::cmc {
 
         // Increment the token count and create our text span which will hold the line number, cursor number and the
         // text itself.
-        ++token_count;
+        ++m_TokenCount;
         usize end          = m_CurrentPos;
-        current_token.span = TextSpan{ .line = line_count,
-                                       .cur  = token_count,
+        current_token.span = TextSpan{ .line = m_LineCount,
+                                       .cur  = m_TokenCount,
                                        .text = std::string{ m_Source.substr(start, end - start) } };
 
         return current_token;

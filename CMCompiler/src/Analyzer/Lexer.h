@@ -147,6 +147,8 @@ namespace cmm::cmc {
     private:
         std::string_view m_Source{};
         usize            m_CurrentPos{};
+        usize            m_TokenCount{};
+        usize            m_LineCount = 1;
 
     public:
         Lexer() = default;
@@ -154,6 +156,7 @@ namespace cmm::cmc {
 
     public:
         std::optional<Token> NextToken();
+        std::optional<Token> PeekToken();
 
     private:
         std::optional<char>        CurrentChar() const noexcept;

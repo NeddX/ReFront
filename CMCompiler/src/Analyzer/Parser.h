@@ -30,16 +30,24 @@ namespace cmm::cmc {
             Initializer,
             FunctionCallExpression,
             ArgumentListExpression,
+            AssignmentExpression,
 
             ArrayLengthSpecifier,
             InitializerList,
 
-            If,
-            ElseIf,
-            Else,
-            While,
-            Return,
-            Block,
+            EqualsExpression,
+            NotEqualsExpression,
+            GreaterThanExpression,
+            LesserThanExpression,
+            GreaterThanOrEqualExpression,
+            LesserThanOrEqualExpression,
+
+            IfStatement,
+            ElseIfStatement,
+            ElseStatement,
+            WhileStatement,
+            ReturnStatement,
+            BlockStatement,
 
             IdentifierName,
             LiteralExpression
@@ -64,10 +72,14 @@ namespace cmm::cmc {
             static std::optional<Type> FromToken(const Token& token) noexcept;
 
         public:
-            bool IsArray() const noexcept;
+            inline bool IsArray() const noexcept { return length > 0; }
+            inline bool IsVoid() const noexcept { return ftype == FundamentalType::Void; }
 
         public:
-            bool operator==(const Type& type) const noexcept;
+            inline bool operator==(const Type& type) const noexcept
+            {
+                return this->ftype == type.ftype && this->name == type.name && this->length == type.length;
+            }
         };
 
         struct Statement
@@ -92,8 +104,10 @@ namespace cmm::cmc {
         std::unordered_map<std::string, Symbol> m_Symbols{};
 
     public:
-        void                  AddSymbol(Symbol symbol) noexcept;
-        std::optional<Symbol> GetSymbol(const std::string& name) noexcept;
+        void          AddSymbol(Symbol symbol) noexcept;
+        bool          ContainsSymbol(const std::string& name) const noexcept;
+        Symbol&       GetSymbol(const std::string& name) noexcept;
+        const Symbol& GetSymbol(const std::string& name) const noexcept;
     };
 
     class Parser
@@ -103,7 +117,7 @@ namespace cmm::cmc {
         Lexer                       m_Lexer{};
         std::optional<Token>        m_CurrentToken{};
         std::vector<ast::Statement> m_GlobalStatements{};
-        std::stack<SymbolTable>     m_SymbolTableStack{};
+        std::vector<SymbolTable>    m_SymbolTableStack{};
 
     public:
         explicit Parser(const std::string_view source) noexcept;
@@ -122,7 +136,10 @@ namespace cmm::cmc {
         std::optional<ast::Statement> ExpectLiteral();
         std::optional<ast::Statement> ExpectIdentifierName();
         std::optional<ast::Statement> ExpectInitializerList();
+        std::optional<ast::Statement> ExpectAssignment();
+        std::optional<ast::Statement> ExpectFunctionCall();
         std::optional<Token>          Consume() noexcept;
+        std::optional<Token>          Peek() noexcept;
     };
 } // namespace cmm::cmc
 
@@ -144,14 +161,21 @@ namespace nlohmann {
                 case Initializer: j = "Initializer"; break;
                 case FunctionCallExpression: j = "FunctionCallExpression"; break;
                 case ArgumentListExpression: j = "ArgumentListExpression"; break;
+                case AssignmentExpression: j = "AssignmentExpression"; break;
                 case ArrayLengthSpecifier: j = "ArrayLengthSpecifier"; break;
                 case InitializerList: j = "InitializerList"; break;
-                case If: j = "IfStatement"; break;
-                case ElseIf: j = "ElseIfStatement"; break;
-                case Else: j = "ElseStatement"; break;
-                case While: j = "WhileStatement"; break;
-                case Return: j = "ReturnStatement"; break;
-                case Block: j = "Block"; break;
+                case EqualsExpression: j = "EqualsExpression"; break;
+                case NotEqualsExpression: j = "NotEqualsExpresion"; break;
+                case GreaterThanExpression: j = "GreaterThanExpression"; break;
+                case LesserThanExpression: j = "LesserThanExpression"; break;
+                case GreaterThanOrEqualExpression: j = "GreaterThanOrEqualExpression"; break;
+                case LesserThanOrEqualExpression: j = "LesserThanOrEqualExpression"; break;
+                case IfStatement: j = "IfStatement"; break;
+                case ElseIfStatement: j = "ElseIfStatement"; break;
+                case ElseStatement: j = "ElseStatement"; break;
+                case WhileStatement: j = "WhileStatement"; break;
+                case ReturnStatement: j = "ReturnStatement"; break;
+                case BlockStatement: j = "BlockStatement"; break;
                 case IdentifierName: j = "IdentifierName"; break;
                 case LiteralExpression: j = "LiteralExpression"; break;
                 default: j = "Unknown"; break;
