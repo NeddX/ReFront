@@ -255,29 +255,116 @@ namespace cmm::cmc {
         // We know that this is guaranteed to be an operator so don't even bother with null checking and just unwrap
         // straight away.
         auto c = *Consume();
+
+        // For checking double operators.
+        auto p = CurrentChar();
         switch (c)
         {
             using enum TokenType;
 
             case ':': return Colon;
             case ';': return SemiColon;
-            case '+': return Plus;
-            case '-': return Minus;
-            case '*': return Asterisk;
-            case '/': return ForwardSlash;
-            case '=': return Equals;
+            case '+':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '+': Consume(); return Increment;
+                        case '=': Consume(); return PlusEquals;
+                        default: break;
+                    }
+                }
+                return Plus;
+            case '-':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '-': Consume(); return Decrement;
+                        case '=': Consume(); return MinusEquals;
+                        default: break;
+                    }
+                }
+                return Minus;
+            case '*':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return AsteriskEquals;
+                        default: break;
+                    }
+                }
+                return Asterisk;
+            case '/':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return ForwardSlashEquals;
+                        default: break;
+                    }
+                }
+                return ForwardSlash;
+            case '=':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return EqualsEquals;
+                        default: break;
+                    }
+                }
+                return Equals;
+            case '!':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return ExclamationEquals;
+                        default: break;
+                    }
+                }
+                return Exclamation;
+            case '|':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '|': Consume(); return BarBar;
+                        default: break;
+                    }
+                }
+                return Bar;
+            case '<':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return LesserThanEquals;
+                        default: break;
+                    }
+                }
+                return LeftAngleBracket;
+            case '>':
+                if (p.has_value())
+                {
+                    switch (*p)
+                    {
+                        case '=': Consume(); return GreaterThanEquals;
+                        default: break;
+                    }
+                }
+                return RightAngleBracket;
             case '(': return LeftBrace;
             case ')': return RightBrace;
             case '{': return LeftCurlyBrace;
             case '}': return RightCurlyBrace;
-            case '<': return LeftAngleBracket;
-            case '>': return RightAngleBracket;
             case '[': return LeftSquareBracket;
             case ']': return RightSquareBracket;
             case '"': return DoubleQuote;
             case '\'': return Quote;
             case ',': return Comma;
-            case '!': return Exclamation;
             default: break;
         }
         return TokenType::None;

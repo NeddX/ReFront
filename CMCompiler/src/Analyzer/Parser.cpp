@@ -691,7 +691,7 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectExpression()
     {
-        return ExpectAddition();
+        return ExpectCondition();
     }
 
     std::optional<Statement> Parser::ExpectPrimaryExpression()
@@ -701,6 +701,7 @@ namespace cmm::cmc {
         if (result)
             return result;
 
+        // Else check for a function call.
         result = ExpectFunctionCall();
         if (result)
             return result;
@@ -1113,6 +1114,62 @@ namespace cmm::cmc {
                                      result->type.ToString());
                         break;
                     }
+                }
+            }
+            else
+            {
+                CompileError(op_token, "Expected an expression on the left hand side of the '{}' operator",
+                             op_token.span.text);
+            }
+        }
+        return result;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectCondition()
+    {
+        auto result = ExpectAddition();
+
+        while (m_CurrentToken->type == TokenType::RightAngleBracket ||
+               m_CurrentToken->type == TokenType::LeftAngleBracket || m_CurrentToken->type == TokenType::EqualsEquals ||
+               m_CurrentToken->type == TokenType::GreaterThanEquals ||
+               m_CurrentToken->type == TokenType::LesserThanEquals ||
+               m_CurrentToken->type == TokenType::ExclamationEquals)
+        {
+            auto op_token = *Consume();
+            auto rhv_expr = ExpectAddition();
+
+            // Our multiplication expression.
+            Statement binary_expr{};
+
+            if (result)
+            {
+                switch (op_token.type)
+                {
+                    using enum TokenType;
+
+                    case RightAngleBracket: binary_expr.kind = StatementKind::GreaterExpression; break;
+                    case LeftAngleBracket: binary_expr.kind = StatementKind::LesserExpression; break;
+                    case EqualsEquals: binary_expr.kind = StatementKind::EqualsExpression; break;
+                    case GreaterThanEquals: binary_expr.kind = StatementKind::GreaterThanExpression; break;
+                    case LesserThanEquals: binary_expr.kind = StatementKind::LesserThanExpression; break;
+                    case ExclamationEquals: binary_expr.kind = StatementKind::NotEqualsExpression; break;
+                    default: break;
+                }
+
+                // FIXME: This is buggy but whatever.
+                if (result->type == rhv_expr->type)
+                {
+                    binary_expr.type = Type::Boolean;
+                    binary_expr.tokens.push_back(std::move(op_token));
+                    binary_expr.children.push_back(std::move(*result));
+                    binary_expr.children.push_back(std::move(*rhv_expr));
+                    result = std::move(binary_expr);
+                }
+                else
+                {
+                    CompileError(*m_CurrentToken,
+                                 "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                 result->type.ToString(), rhv_expr->type.ToString());
                 }
             }
             else

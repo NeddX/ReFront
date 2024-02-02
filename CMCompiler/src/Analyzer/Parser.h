@@ -40,7 +40,9 @@ namespace cmm::cmc {
 
             EqualsExpression,
             NotEqualsExpression,
+            GreaterExpression,
             GreaterThanExpression,
+            LesserExpression,
             LesserThanExpression,
             GreaterThanOrEqualExpression,
             LesserThanOrEqualExpression,
@@ -172,6 +174,7 @@ namespace cmm::cmc {
         ast::Statement                ExpectFunctionArgumentList();
         std::optional<ast::Statement> ExpectAssignment();
         std::optional<ast::Statement> ExpectAddition();
+        std::optional<ast::Statement> ExpectCondition();
         std::optional<ast::Statement> ExpectMultiplication();
     };
 } // namespace cmm::cmc
@@ -203,7 +206,9 @@ namespace nlohmann {
                 case NotEqualsExpression: j = "NotEqualsExpresion"; break;
                 case GreaterThanExpression: j = "GreaterThanExpression"; break;
                 case LesserThanExpression: j = "LesserThanExpression"; break;
+                case LesserExpression: j = "LesserExpression"; break;
                 case GreaterThanOrEqualExpression: j = "GreaterThanOrEqualExpression"; break;
+                case GreaterExpression: j = "GreaterEpxression"; break;
                 case LesserThanOrEqualExpression: j = "LesserThanOrEqualExpression"; break;
                 case AssignmentExpression: j = "AssignmentExpression"; break;
                 case AdditionExpression: j = "AdditionExpression"; break;

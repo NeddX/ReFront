@@ -42,6 +42,25 @@ namespace cmm::cmc {
         Quote,
         Comma,
         Exclamation,
+        Bar,
+
+        // Conditionals
+        EqualsEquals,
+        GreaterThanEquals,
+        LesserThanEquals,
+        ExclamationEquals,
+        AmpersasndAmpersand,
+        BarBar,
+
+        // Unary
+        Increment,
+        Decrement,
+
+        // Shorthand
+        PlusEquals,
+        MinusEquals,
+        AsteriskEquals,
+        ForwardSlashEquals,
 
         // Keywords
         KeywordLet,
@@ -107,7 +126,20 @@ namespace cmm::cmc {
                 case DoubleQuote:
                 case Quote:
                 case Comma:
-                case Exclamation: return true;
+                case Exclamation:
+                case Bar:
+                case EqualsEquals:
+                case GreaterThanEquals:
+                case LesserThanEquals:
+                case ExclamationEquals:
+                case AmpersasndAmpersand:
+                case BarBar:
+                case Increment:
+                case Decrement:
+                case PlusEquals:
+                case MinusEquals:
+                case AsteriskEquals:
+                case ForwardSlashEquals: return true;
                 default: break;
             }
             return false;
@@ -204,6 +236,19 @@ namespace nlohmann {
                 case Quote: j = "Quote"; break;
                 case Comma: j = "Comma"; break;
                 case Exclamation: j = "Exclamation"; break;
+                case Bar: j = "Bar"; break;
+                case EqualsEquals: j = "EqualsEquals"; break;
+                case GreaterThanEquals: j = "GreaterThanEquals"; break;
+                case LesserThanEquals: j = "LesserThanEquals"; break;
+                case ExclamationEquals: j = "ExclamationEquals"; break;
+                case AmpersasndAmpersand: j = "AmpersandAmpersand"; break;
+                case BarBar: j = "BarBar"; break;
+                case Increment: j = "Increment"; break;
+                case Decrement: j = "Decrement"; break;
+                case PlusEquals: j = "PlusEquals"; break;
+                case MinusEquals: j = "MinusEquals"; break;
+                case AsteriskEquals: j = "AsteriskEquals"; break;
+                case ForwardSlashEquals: j = "ForwardSlashEquals"; break;
                 case KeywordLet: j = "KeywordLet"; break;
                 case KeywordFn: j = "KeywordFn"; break;
                 case KeywordImport: j = "KeywordImport"; break;
