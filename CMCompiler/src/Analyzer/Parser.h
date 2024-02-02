@@ -1,6 +1,7 @@
 #ifndef CMC_ANALYZER_PARSER_H
 #define CMC_ANALYZER_PARSER_H
 
+#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 #include <stack>
 #include <vector>
@@ -29,8 +30,10 @@ namespace cmm::cmc {
             FunctionParemeterList,
             Initializer,
             FunctionCallExpression,
-            ArgumentListExpression,
-            AssignmentExpression,
+            FunctionArgument,
+            FunctionArgumentList,
+            ImportDirective,
+            NoOperationStatement,
 
             ArrayLengthSpecifier,
             InitializerList,
@@ -41,6 +44,12 @@ namespace cmm::cmc {
             LesserThanExpression,
             GreaterThanOrEqualExpression,
             LesserThanOrEqualExpression,
+
+            AssignmentExpression,
+            AdditionExpression,
+            SubtractionExpression,
+            MultiplicationExpression,
+            DivisionExpression,
 
             IfStatement,
             ElseIfStatement,
@@ -56,24 +65,36 @@ namespace cmm::cmc {
         struct Type
         {
         public:
-            std::string       name{};
+            std::string       name = "Void";
             FundamentalType   ftype{};
             std::vector<Type> fields{}; // For user defined types.
-            usize             length{};
+            usize             length{}; // In element count (for arrays).
+            i8                size{};   // In bits.
 
         public:
             static Type Integer32;
             static Type Integer64;
-            static Type String;
             static Type Character;
             static Type Boolean;
+
+        public:
+            static Type String(const Token& string_token) noexcept;
 
         public:
             static std::optional<Type> FromToken(const Token& token) noexcept;
 
         public:
-            inline bool IsArray() const noexcept { return length > 0; }
-            inline bool IsVoid() const noexcept { return ftype == FundamentalType::Void; }
+            inline bool        IsArray() const noexcept { return length > 0; }
+            inline bool        IsVoid() const noexcept { return ftype == FundamentalType::Void; }
+            inline std::string ToString() const noexcept
+            {
+                std::string str{};
+                if (IsArray())
+                    str = name + "[" + std::to_string(length) + "]";
+                else
+                    str = name;
+                return str;
+            }
 
         public:
             inline bool operator==(const Type& type) const noexcept
@@ -132,21 +153,26 @@ namespace cmm::cmc {
         std::vector<ast::Statement> Parse();
 
     private:
+        std::optional<Token>          Consume() noexcept;
+        std::optional<Token>          Peek() noexcept;
+        std::optional<ast::Statement> GetStatement(const ast::StatementKind kind) const noexcept;
         std::optional<ast::Statement> ExpectFunctionDecl();
+        std::optional<ast::Statement> ExpectImportDirective();
         ast::Statement                ExpectFunctionParameterList();
         std::optional<ast::Statement> ExpectLocalStatement();
         std::optional<ast::Statement> ExpectBlockStatement();
         std::optional<ast::Statement> ExpectVariableDeclaration();
         std::optional<ast::Statement> ExpectKeyword();
         std::optional<ast::Statement> ExpectExpression();
+        std::optional<ast::Statement> ExpectPrimaryExpression();
         std::optional<ast::Statement> ExpectLiteral();
         std::optional<ast::Statement> ExpectIdentifierName();
         std::optional<ast::Statement> ExpectInitializerList();
-        std::optional<ast::Statement> ExpectAssignment();
         std::optional<ast::Statement> ExpectFunctionCall();
-        std::optional<ast::Statement> ExpectBinaryExpression();
-        std::optional<Token>          Consume() noexcept;
-        std::optional<Token>          Peek() noexcept;
+        ast::Statement                ExpectFunctionArgumentList();
+        std::optional<ast::Statement> ExpectAssignment();
+        std::optional<ast::Statement> ExpectAddition();
+        std::optional<ast::Statement> ExpectMultiplication();
     };
 } // namespace cmm::cmc
 
@@ -165,10 +191,12 @@ namespace nlohmann {
                 case FunctionDeclaration: j = "FunctionDeclaration"; break;
                 case FunctionParameter: j = "FunctionParameter"; break;
                 case FunctionParemeterList: j = "FunctionParameterList"; break;
+                case ImportDirective: j = "ImportDirective"; break;
+                case NoOperationStatement: j = "NoOperationStatement"; break;
                 case Initializer: j = "Initializer"; break;
                 case FunctionCallExpression: j = "FunctionCallExpression"; break;
-                case ArgumentListExpression: j = "ArgumentListExpression"; break;
-                case AssignmentExpression: j = "AssignmentExpression"; break;
+                case FunctionArgument: j = "FunctionArgument"; break;
+                case FunctionArgumentList: j = "FunctionArgumentList"; break;
                 case ArrayLengthSpecifier: j = "ArrayLengthSpecifier"; break;
                 case InitializerList: j = "InitializerList"; break;
                 case EqualsExpression: j = "EqualsExpression"; break;
@@ -177,6 +205,11 @@ namespace nlohmann {
                 case LesserThanExpression: j = "LesserThanExpression"; break;
                 case GreaterThanOrEqualExpression: j = "GreaterThanOrEqualExpression"; break;
                 case LesserThanOrEqualExpression: j = "LesserThanOrEqualExpression"; break;
+                case AssignmentExpression: j = "AssignmentExpression"; break;
+                case AdditionExpression: j = "AdditionExpression"; break;
+                case SubtractionExpression: j = "SubtractionExpression"; break;
+                case MultiplicationExpression: j = "MultiplicationExpression"; break;
+                case DivisionExpression: j = "DivisionExpression"; break;
                 case IfStatement: j = "IfStatement"; break;
                 case ElseIfStatement: j = "ElseIfStatement"; break;
                 case ElseStatement: j = "ElseStatement"; break;
@@ -222,6 +255,7 @@ namespace nlohmann {
             j["ftype"]  = type.ftype;
             j["fields"] = type.fields;
             j["length"] = type.length;
+            j["size"]   = type.size;
         }
     };
 
@@ -237,7 +271,10 @@ namespace nlohmann {
             j["tokens"]   = s.tokens;
         }
     };
-
 } // namespace nlohmann
+
+namespace std {
+    std::string to_string(const cmm::cmc::ast::Type& type) noexcept;
+} // namespace std
 
 #endif // CMC_ANALYZER_PARSER_H

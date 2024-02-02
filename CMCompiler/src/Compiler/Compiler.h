@@ -28,10 +28,11 @@ namespace cmm::cmc {
         {
         private:
             std::unordered_map<std::string, Symbol> m_Symbol{};
-            usize                                   m_Offset{};
+            i32                                     m_Offset{};
 
         public:
-            inline usize GetOffset() const noexcept { return m_Offset; }
+            inline i32&       GetOffset() noexcept { return m_Offset; }
+            inline const i32& GetOffset() const noexcept { return m_Offset; }
 
         public:
             void          AddSymbol(Symbol symbol) noexcept;
@@ -56,7 +57,10 @@ namespace cmm::cmc {
         void                         CompileFunctionBody(const ast::Statement& fnStmt);
         void                         CompileBlockStatement(const ast::Statement& block);
         void                         CompileVariableDeclaration(const ast::Statement& var);
-        void                         CompileLiteral(const ast::Statement& var);
+        void                         CompileInitializer(const ast::Statement& init);
+        void                         CompileExpression(const ast::Statement& expr);
+        void                         CompileLiteral(const ast::Statement& literal);
+        void                         CompileInitializerList(const ast::Statement& initList);
     };
 } // namespace cmm::cmc
 

@@ -1,7 +1,5 @@
 #include "Parser.h"
 
-#include <fmt/core.h>
-
 // TODO: Improve and instead use exceptions.
 #define CompileError(token, ...)                                                                                       \
     std::cerr << fmt::format("Compile Error @ line ({}, {}): ", (token).span.line, (token).span.cur)                   \
@@ -12,11 +10,17 @@ namespace cmm::cmc {
     using namespace ast;
 
     namespace ast {
-        Type Type::Integer32 = Type{ .name = "Integer32", .ftype = FundamentalType::Integer32 };
-        Type Type::Integer64 = Type{ .name = "Integer64", .ftype = FundamentalType::Integer64 };
-        Type Type::String    = Type{ .name = "CString", .ftype = FundamentalType::String };
-        Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character };
-        Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean };
+        Type Type::Integer32 = Type{ .name = "Integer32", .ftype = FundamentalType::Integer32, .size = 32 };
+        Type Type::Integer64 = Type{ .name = "Integer64", .ftype = FundamentalType::Integer64, .size = 64 };
+        Type Type::Character = Type{ .name = "Character8", .ftype = FundamentalType::Character, .size = 8 };
+        Type Type::Boolean   = Type{ .name = "Boolean", .ftype = FundamentalType::Boolean, .size = 8 };
+
+        Type Type::String(const Token& string_token) noexcept
+        {
+            auto type = Type{ .name = "CString", .ftype = FundamentalType::String };
+            type.size = string_token.span.text.size();
+            return type;
+        }
 
         std::optional<Token> Statement::GetToken(const TokenType& type) const noexcept
         {
@@ -57,7 +61,7 @@ namespace cmm::cmc {
 
             case KeywordI32: return Type::Integer32;
             case KeywordI64: return Type::Integer64;
-            case KeywordString: return Type::String;
+            case KeywordString: return Type::String(token);
             case KeywordChar: return Type::Character;
             case KeywordBool: return Type::Boolean;
             case Identifier: return Type{ .name = token.span.text, .ftype = FundamentalType::UserDefined };
@@ -72,10 +76,9 @@ namespace cmm::cmc {
 
     std::vector<Statement> Parser::Parse()
     {
-        m_Lexer = Lexer(m_Source);
-        for (m_CurrentToken = m_Lexer.NextToken();
-             m_CurrentToken.has_value() && m_CurrentToken.value().type != TokenType::Eof;
-             m_CurrentToken = m_Lexer.NextToken())
+        m_Lexer        = Lexer(m_Source);
+        m_CurrentToken = m_Lexer.NextToken();
+        while (m_CurrentToken->IsValid())
         {
             if (auto c = ExpectFunctionDecl(); c.has_value())
                 m_GlobalStatements.push_back(std::move(*c));
@@ -95,6 +98,16 @@ namespace cmm::cmc {
         return m_Lexer.PeekToken();
     }
 
+    std::optional<Statement> Parser::GetStatement(const StatementKind kind) const noexcept
+    {
+        for (const auto& e : m_GlobalStatements)
+        {
+            if (e.kind == kind)
+                return e;
+        }
+        return std::nullopt;
+    }
+
     std::optional<Statement> Parser::ExpectFunctionDecl()
     {
         if (m_CurrentToken->type == TokenType::KeywordFn)
@@ -110,8 +123,12 @@ namespace cmm::cmc {
             {
                 // Consume the identifier.
                 prev_token     = *Consume();
+                func_stmt.name = prev_token.span.text;
                 func_stmt.kind = StatementKind::FunctionDeclaration;
                 func_stmt.tokens.push_back(std::move(prev_token));
+
+                // The function's parameter list symbol table.
+                m_SymbolTableStack.push_back(SymbolTable{});
 
                 // Parse possible parameter list, if there's none then our parameter list statement will just be empty.
                 auto param_list = ExpectFunctionParameterList();
@@ -163,6 +180,9 @@ namespace cmm::cmc {
                     CompileError(*m_CurrentToken,
                                  "Expected a function return type specifier or a function scope start.");
                 }
+
+                // Pop the function's parameter list symbol table.
+                m_SymbolTableStack.pop_back();
 
                 return func_stmt;
             }
@@ -233,6 +253,9 @@ namespace cmm::cmc {
                         CompileError(*m_CurrentToken, "Expected a type specifier for the parameter.");
                     }
 
+                    // Append our parameter to the function's current symbol table.
+                    m_SymbolTableStack.back().AddSymbol(Symbol{ .name = parameter.name, .statement = parameter });
+
                     // Finally, push our parameter statement to our parameter list.
                     params.children.push_back(std::move(parameter));
                 }
@@ -300,8 +323,14 @@ namespace cmm::cmc {
 
         // Check for the semicolon.
         if (m_CurrentToken->type == TokenType::SemiColon)
+        {
             // Consume the semicolon.
             Consume();
+
+            // If we don't have a result then it is a no-op statement.
+            if (!result)
+                return Statement{ .kind = StatementKind::NoOperationStatement };
+        }
         else
         {
             CompileError(*m_CurrentToken, "Expected a semicolon but got {} instead.", m_CurrentToken->ToString());
@@ -441,6 +470,9 @@ namespace cmm::cmc {
                     init_stmt.tokens.push_back(std::move(equals_token));
                     init_stmt.kind = StatementKind::Initializer;
 
+                    // Save the token before expression parsing.
+                    auto pre_expr_token = *m_CurrentToken;
+
                     // The initializer expression.
                     auto init_expr = ExpectExpression();
                     if (init_expr)
@@ -466,7 +498,7 @@ namespace cmm::cmc {
                                     CompileError(
                                         e.tokens.at(0),
                                         "Type mistmatch. Cannot perform implicit conversion from '{}' to '{}'.",
-                                        e.type.name, var_decl.type.name);
+                                        e.type.ToString(), var_decl.type.ToString());
                                 }
                             }
                         }
@@ -477,12 +509,16 @@ namespace cmm::cmc {
                             {
                                 CompileError(init_stmt.tokens[0],
                                              "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
-                                             init_expr->type.name, var_decl.type.name);
+                                             init_expr->type.ToString(), var_decl.type.ToString());
                             }
                         }
 
                         // If we reached here then everything is fine so just append our initializer and move on.
                         init_stmt.children.push_back(std::move(*init_expr));
+                    }
+                    else
+                    {
+                        CompileError(pre_expr_token, "Expected a valid expression for initialization.");
                     }
 
                     // Append our initializer statement.
@@ -562,7 +598,7 @@ namespace cmm::cmc {
                         {
                             CompileError(pre_cond_token,
                                          "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
-                                         condition->type.name, Type::Boolean.name);
+                                         condition->type.ToString(), Type::Boolean.ToString());
                         }
                     }
                     else
@@ -612,7 +648,7 @@ namespace cmm::cmc {
                         {
                             CompileError(pre_cond_token,
                                          "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
-                                         condition->type.name, Type::Boolean.name);
+                                         condition->type.ToString(), Type::Boolean.ToString());
                         }
                     }
                     else
@@ -655,23 +691,27 @@ namespace cmm::cmc {
 
     std::optional<Statement> Parser::ExpectExpression()
     {
-        // Check for a literal expression.
-        auto result = ExpectLiteral();
+        return ExpectAddition();
+    }
+
+    std::optional<Statement> Parser::ExpectPrimaryExpression()
+    {
+        // Check if it's a function call expression.
+        auto result = ExpectAssignment();
         if (result)
             return result;
 
-        // Else check if it's an assignment expression.
-        // result = ExpectAssignment();
-        // if (result)
-        //    return result;
+        result = ExpectFunctionCall();
+        if (result)
+            return result;
 
         // Else check for an initializer list expression.
         result = ExpectInitializerList();
         if (result)
             return result;
 
-        // Else check if it's a function call expression.
-        result = ExpectFunctionCall();
+        // Check for a literal expression.
+        result = ExpectLiteral();
         if (result)
             return result;
 
@@ -679,13 +719,6 @@ namespace cmm::cmc {
         result = ExpectIdentifierName();
         if (result)
             return result;
-
-        // Else check for a binary expression.
-        result = ExpectBinaryExpression();
-        if (result)
-            return result;
-
-        // more to come!
 
         return std::nullopt;
     }
@@ -712,7 +745,7 @@ namespace cmm::cmc {
                     auto      token = *Consume();
                     Statement stmt{};
                     stmt.kind = StatementKind::LiteralExpression;
-                    stmt.type = Type::String;
+                    stmt.type = Type::String(token);
                     stmt.tokens.push_back(std::move(token));
                     return stmt;
                 }
@@ -816,6 +849,8 @@ namespace cmm::cmc {
             {
                 // Consume and append our closing curly brace to the initializer list statement.
                 init_list.tokens.push_back(closing_curly);
+                init_list.type        = init_list.children.back().type;
+                init_list.type.length = init_list.children.size();
                 return init_list;
             }
             else
@@ -826,90 +861,273 @@ namespace cmm::cmc {
         return std::nullopt;
     }
 
-    std::optional<Statement> Parser::ExpectAssignment()
+    std::optional<ast::Statement> Parser::ExpectFunctionCall()
     {
-        // Check if the left hand value of the assignment expression is an identifier.
+        // Check for the identifier.
         if (m_CurrentToken->type == TokenType::Identifier)
         {
-            // Peek the next token cause this might not really be an assignment expression.
-            auto next = Peek();
-            if (next->type == TokenType::Equals)
+            // Check if the following token (without consuming casue we are unsure) is an opening brace.
+            if (Peek()->type == TokenType::LeftBrace)
             {
-                // Consume the equals operator.
-                Consume();
+                // Now we definitely know that it's a function call.
+                auto ident_token = *Consume();
 
-                // Parse the lhv and unwrap it immediately because we surely now that if it got parsed, then it is valid
-                // identifier.
-                auto ident_token = *m_CurrentToken;
-                auto lhv         = *ExpectIdentifierName();
-
-                // Our assignment expression statement.
-                Statement assign_expr{};
-
-                assign_expr.type = lhv.type;
-                assign_expr.kind = StatementKind::AssignmentExpression;
-
-                // Save the token.
-                auto rhv_token = *m_CurrentToken;
-
-                // Regular assignment expression.
-                auto rhv = ExpectExpression();
-                if (!rhv)
+                // Try and find the function.
+                Statement ref_fn{};
+                for (const auto& fn : m_GlobalStatements)
                 {
-                    CompileError(rhv_token, "Bad assignment expression.");
+                    if (fn.kind == StatementKind::FunctionDeclaration)
+                    {
+                        if (fn.name == ident_token.span.text)
+                            ref_fn = fn;
+                    }
                 }
 
-                // Check if the types match.
-                if (rhv->type == lhv.type)
+                // If the function was not found.
+                if (ref_fn.type.IsVoid())
                 {
-                    // We're done here so just push the rhv and lhv and return our assignment expression.
-                    lhv.name  = "lhv";
-                    rhv->name = "rhv";
-                    assign_expr.children.push_back(std::move(lhv));
-                    assign_expr.children.push_back(std::move(*rhv));
-                    return assign_expr;
+                    CompileError(ident_token, "The name '{}' does not exist in the current context.",
+                                 ident_token.span.text);
+                }
+
+                // Our function call statement.
+                Statement func_call{};
+                func_call.name = ident_token.span.text;
+                func_call.kind = StatementKind::FunctionCallExpression;
+                func_call.type = ref_fn.type;
+                func_call.tokens.push_back(std::move(ident_token));
+
+                auto arg_list = ExpectFunctionArgumentList();
+
+                // Check for a type mismatch.
+                for (usize i = 0; i < arg_list.children.size(); ++i)
+                {
+                    if (arg_list.children[i].type != ref_fn.children[0].children[i].type)
+                    {
+                        CompileError(ident_token,
+                                     "Cannot perform implicit conversion from '{}' to '{}'. No matching function "
+                                     "call to '{}'.",
+                                     arg_list.children[i].type.ToString(),
+                                     ref_fn.children[0].children[i].type.ToString(), func_call.name);
+                    }
+                }
+
+                // Finally, return our function call statement.
+                func_call.children.push_back(std::move(arg_list));
+                return func_call;
+            }
+        }
+        return std::nullopt;
+    }
+
+    ast::Statement Parser::ExpectFunctionArgumentList()
+    {
+        Statement args{};
+        if (m_CurrentToken->type == TokenType::LeftBrace)
+        {
+            // Consume the left brace.
+            auto prev_token = *Consume();
+
+            // If our token is not eof.
+            while (m_CurrentToken->IsValid())
+            {
+                if (m_CurrentToken->type == TokenType::Comma)
+                {
+                    // There are more parameters so just progress forward.
+                    Consume();
+                }
+                else if (m_CurrentToken->type == TokenType::RightBrace)
+                {
+                    // We've reached the end so terminate.
+                    break;
                 }
                 else
                 {
-                    CompileError(rhv_token, "Type mistmatch. Cannot perform implicit conversion from '{}', '{}'.",
-                                 lhv.type.name, rhv->type.name);
+                    auto expr = ExpectExpression();
+                    if (expr)
+                    {
+                        args.children.push_back(std::move(*expr));
+                    }
+                    else
+                    {
+                        CompileError(*m_CurrentToken, "Expected a function argument.");
+                    }
                 }
             }
-        }
-        return std::nullopt;
-    }
 
-    std::optional<ast::Statement> Parser::ExpectFunctionCall()
-    {
-        return std::nullopt;
-    }
-
-    std::optional<ast::Statement> Parser::ExpectBinaryExpression()
-    {
-        // Get the next token but don't consume.
-        auto op_token = Peek();
-        if (op_token)
-        {
-            // Check if it is an operator.
-            if (op_token->IsOperator())
+            if (!m_CurrentToken->IsValid())
             {
-                switch (m_CurrentToken->type)
-                {
-                    using enum TokenType;
+                CompileError(*m_CurrentToken, "Expected a closing brace after the function argument list.");
+            }
+            else
+            {
+                // Consume the right brace.
+                Consume();
+                args.kind = StatementKind::FunctionArgumentList;
+            }
+        }
+        else
+        {
+            CompileError(*m_CurrentToken, "Expected an argument list.");
+        }
+        return args;
+    }
 
-                    case Identifier: {
-                        break;
+    std::optional<ast::Statement> Parser::ExpectAssignment()
+    {
+        if (m_CurrentToken->type == TokenType::Identifier)
+        {
+            if (Peek()->type == TokenType::Equals)
+            {
+                // Parse our identifier.
+                auto lhv = *ExpectIdentifierName();
+
+                // Consuem the equals token.
+                auto equals_token = *Consume();
+
+                auto pre_rhv_token = *m_CurrentToken;
+
+                auto rhv = ExpectExpression();
+                if (rhv)
+                {
+                    if (rhv->type == lhv.type)
+                    {
+                        Statement assign_expr{};
+                        assign_expr.type = lhv.type;
+                        assign_expr.kind = StatementKind::AssignmentExpression;
+                        assign_expr.children.push_back(std::move(lhv));
+                        assign_expr.children.push_back(std::move(*rhv));
+                        return assign_expr;
                     }
-                    case NumberLiteral: {
-                        break;
+                    else
+                    {
+                        CompileError(pre_rhv_token,
+                                     "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                     rhv->type.ToString(), lhv.type.ToString());
                     }
-                    case StringLiteral: {
-                        break;
-                    }
-                    default: break;
+                }
+                else
+                {
+                    CompileError(equals_token, "Expected a valid expression after the equals operator.");
                 }
             }
         }
         return std::nullopt;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectAddition()
+    {
+        auto result = ExpectMultiplication();
+        while (m_CurrentToken->type == TokenType::Plus || m_CurrentToken->type == TokenType::Minus)
+        {
+            auto op_token = *Consume();
+            auto rhv_expr = ExpectMultiplication();
+
+            // Our multiplication expression.
+            Statement binary_expr{};
+
+            if (result)
+            {
+                binary_expr.kind = (op_token.type == TokenType::Plus) ? StatementKind::AdditionExpression
+                                                                      : StatementKind::SubtractionExpression;
+                switch (result->type.ftype)
+                {
+                    // We support fundamental types for now.
+                    using enum FundamentalType;
+
+                    case Integer32:
+                    case Integer64: {
+                        if (result->type == rhv_expr->type)
+                        {
+                            binary_expr.type = result->type;
+                            binary_expr.tokens.push_back(std::move(op_token));
+                            binary_expr.children.push_back(std::move(*result));
+                            binary_expr.children.push_back(std::move(*rhv_expr));
+                            result = std::move(binary_expr);
+                        }
+                        else
+                        {
+                            CompileError(*m_CurrentToken,
+                                         "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                         result->type.ToString(), rhv_expr->type.ToString());
+                        }
+                        break;
+                    }
+                    default: {
+                        CompileError(op_token, "Cannot perform '{}' on type {}.", op_token.span.text,
+                                     result->type.ToString());
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                CompileError(op_token, "Expected an expression on the left hand side of the '{}' operator",
+                             op_token.span.text);
+            }
+        }
+        return result;
+    }
+
+    std::optional<ast::Statement> Parser::ExpectMultiplication()
+    {
+        auto result = ExpectPrimaryExpression();
+        while (m_CurrentToken->type == TokenType::Asterisk || m_CurrentToken->type == TokenType::ForwardSlash)
+        {
+            auto op_token = *Consume();
+            auto rhv_expr = ExpectPrimaryExpression();
+
+            // Our multiplication expression.
+            Statement binary_expr{};
+
+            if (result)
+            {
+                binary_expr.kind = (op_token.type == TokenType::Asterisk) ? StatementKind::MultiplicationExpression
+                                                                          : StatementKind::DivisionExpression;
+                switch (result->type.ftype)
+                {
+                    // We support fundamental types for now.
+                    using enum FundamentalType;
+
+                    case Integer32:
+                    case Integer64: {
+                        if (result->type == rhv_expr->type)
+                        {
+                            binary_expr.type = result->type;
+                            binary_expr.tokens.push_back(std::move(op_token));
+                            binary_expr.children.push_back(std::move(*result));
+                            binary_expr.children.push_back(std::move(*rhv_expr));
+                            result = std::move(binary_expr);
+                        }
+                        else
+                        {
+                            CompileError(*m_CurrentToken,
+                                         "Type mismatch. Cannot perform implicit conversion from '{}' to '{}'.",
+                                         result->type.ToString(), rhv_expr->type.ToString());
+                        }
+
+                        break;
+                    }
+                    default: {
+                        CompileError(op_token, "Cannot perform '{}' on type {}.", op_token.span.text,
+                                     result->type.ToString());
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                CompileError(op_token, "Expected an expression on the left hand side of the '{}' operator",
+                             op_token.span.text);
+            }
+        }
+        return result;
     }
 } // namespace cmm::cmc
+
+namespace std {
+    std::string to_string(const cmm::cmc::ast::Type& type) noexcept
+    {
+        return type.ToString();
+    }
+} // namespace std

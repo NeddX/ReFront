@@ -90,20 +90,80 @@ namespace cmm::cmc {
 
     void Compiler::CompileVariableDeclaration(const Statement& var)
     {
-        Symbol sym{};
-        sym.stmt = var;
-        sym.name = var.name;
-        sym.kind = SymbolKind::Variable;
-
+        // Grab our current block's symbol table.
         auto& current_table = m_SymbolTableStack.back();
 
-        switch (var.children[0].kind)
+        Symbol sym{};
+        sym.stmt    = var;
+        sym.name    = var.name;
+        sym.kind    = SymbolKind::Variable;
+        sym.size    = (var.type.size / 8) * ((var.type.length == 0) ? 1 : var.type.length);
+        sym.address = current_table.GetOffset();
+
+        // Initialized.
+        if (!var.children.empty())
+        {
+            // We know that a variable declaration statement will always have an Initializer statement if initialized
+            // (but of course).
+            CompileInitializer(var.children[0]);
+            current_table.AddSymbol(sym);
+        }
+        else
+        {
+            // Just allocate space on the stack.
+            switch (var.type.ftype)
+            {
+                using enum FundamentalType;
+
+                case Boolean:
+                case Character:
+                case Integer32:
+                case Integer64:
+                    m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
+                                                          .sreg   = RegType::BP,
+                                                          .disp   = current_table.GetOffset(),
+                                                          .size   = (i8)(var.type.size / 8) });
+                    break;
+                // FIXME: Uninitilized strings do not allocate space.
+                case String: break;
+                default: break;
+            }
+        }
+    }
+
+    void Compiler::CompileInitializer(const Statement& init)
+    {
+        // Check if the initializer's value is a value, expression or a initializer list.
+        switch (init.children[0].kind)
         {
             using enum StatementKind;
 
-            case Initializer: {
-                CompileLiteral(var.children[0]);
-                current_table.AddSymbol(sym);
+            case LiteralExpression: {
+                CompileLiteral(init.children[0]);
+                break;
+            }
+            case InitializerList: {
+                CompileInitializerList(init.children[0]);
+                break;
+            }
+            default: break;
+        }
+    }
+
+    void Compiler::CompileExpression(const ast::Statement& expr)
+    {
+        switch (expr.kind)
+        {
+            using enum StatementKind;
+
+            case FunctionCallExpression: {
+                break;
+            }
+            case FunctionArgumentList: {
+                break;
+            }
+            case LiteralExpression: {
+                CompileLiteral(expr);
                 break;
             }
             default: break;
@@ -112,41 +172,59 @@ namespace cmm::cmc {
 
     void Compiler::CompileLiteral(const Statement& literal)
     {
+        // Grab our current block's symbol table.
         auto& current_table = m_SymbolTableStack.back();
-        switch (literal.children[0].type.ftype)
+
+        // The literal token.
+        auto& literal_token = literal.tokens[0];
+
+        // We support fundamental types only for now.
+        switch (literal.type.ftype)
         {
             using enum FundamentalType;
 
+            // For numeric types.
+            case Boolean:
+            case Character:
+            case Integer32:
             case Integer64: {
-                m_CompiledCode.push_back(
-                    Instruction{ .opcode       = OpCode::Store,
-                                 .imm64        = (u64)literal.children[0].GetToken(TokenType::NumberLiteral)->num,
-                                 .sreg         = RegType::BP,
-                                 .displacement = (i32)current_table.GetOffset(),
-                                 .size         = 64 });
-                break;
-            }
-            case Boolean: {
                 m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
-                                                      .imm64  = (u64)literal.GetToken(TokenType::NumberLiteral)->num,
+                                                      .imm64  = (u64)literal_token.num,
                                                       .sreg   = RegType::BP,
-                                                      .displacement = (i32)current_table.GetOffset(),
-                                                      .size         = 8 });
-                break;
-            }
-            case Character: {
-                m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
-                                                      .imm64  = (u64)literal.GetToken(TokenType::NumberLiteral)->num,
-                                                      .sreg   = RegType::BP,
-                                                      .displacement = (i32)current_table.GetOffset(),
-                                                      .size         = 8 });
+                                                      .disp   = current_table.GetOffset(),
+                                                      .size   = (i8)(literal.type.size / 8) });
                 break;
             }
             case String: {
+                auto offset = current_table.GetOffset();
+                for (char c : literal_token.span.text)
+                {
+                    m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
+                                                          .imm64  = (u64)c,
+                                                          .sreg   = RegType::BP,
+                                                          .disp   = offset,
+                                                          .size   = (i8)(Type::Character.size / 8) });
+                    offset += Type::Character.size / 8;
+                }
                 break;
             }
 
             default: break;
         }
+    }
+
+    void Compiler::CompileInitializerList(const ast::Statement& initList)
+    {
+        // Grab our current block's symbol table.
+        auto& current_table = m_SymbolTableStack.back();
+
+        auto prev_offset = current_table.GetOffset();
+        for (const auto& expr : initList.children)
+        {
+            CompileExpression(expr);
+            current_table.GetOffset() += expr.type.size / 8;
+        }
+
+        current_table.GetOffset() = prev_offset;
     }
 } // namespace cmm::cmc
