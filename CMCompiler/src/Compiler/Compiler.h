@@ -29,6 +29,7 @@ namespace cmm::cmc {
         private:
             std::unordered_map<std::string, Symbol> m_Symbol{};
             i32                                     m_Offset{};
+            usize                                   m_UsedRegisters{};
 
         public:
             inline i32&       GetOffset() noexcept { return m_Offset; }
@@ -40,14 +41,21 @@ namespace cmm::cmc {
             Symbol&       GetSymbol(const std::string& name) noexcept;
             const Symbol& GetSymbol(const std::string& name) const noexcept;
         };
+
+        struct FunctionDefinition
+        {
+            std::string name{};
+            usize       address{};
+        };
     } // namespace codegen
 
     class Compiler
     {
     private:
-        ast::SyntaxTree                   m_Tree{};
-        rlang::alvm::InstructionList      m_CompiledCode{};
-        std::vector<codegen::SymbolTable> m_SymbolTableStack{};
+        ast::SyntaxTree                          m_Tree{};
+        rlang::alvm::InstructionList             m_CompiledCode{};
+        std::vector<codegen::FunctionDefinition> m_CompiledFunctions{};
+        std::vector<codegen::SymbolTable>        m_SymbolTableStack{};
 
     public:
         Compiler(ast::SyntaxTree tree);
@@ -61,6 +69,7 @@ namespace cmm::cmc {
         void                         CompileExpression(const ast::Statement& expr);
         void                         CompileLiteral(const ast::Statement& literal);
         void                         CompileInitializerList(const ast::Statement& initList);
+        void                         CompileFunctionCall(const ast::Statement& fnCall);
     };
 } // namespace cmm::cmc
 

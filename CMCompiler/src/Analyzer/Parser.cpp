@@ -885,7 +885,7 @@ namespace cmm::cmc {
                 }
 
                 // If the function was not found.
-                if (ref_fn.type.IsVoid())
+                if (ref_fn.kind == StatementKind::None)
                 {
                     CompileError(ident_token, "The name '{}' does not exist in the current context.",
                                  ident_token.span.text);

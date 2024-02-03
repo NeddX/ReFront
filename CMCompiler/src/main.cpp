@@ -1,14 +1,15 @@
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 #include <CommonDef.h>
 
 #include "Analyzer/Parser.h"
 #include "Compiler/Compiler.h"
 
-#include <nlohmann/json.hpp>
-
+using namespace cmm;
 using namespace cmm::cmc;
+using namespace rlang::alvm;
 
 int main(int argc, const char* argv[])
 {
@@ -24,7 +25,10 @@ int main(int argc, const char* argv[])
             std::cout << std::setw(4) << json << std::endl;
             auto compiler      = Compiler(tree);
             auto compiled_code = compiler.Compile();
-            compiled_code.size();
+            auto vm            = ALVM(std::vector<u8>{}, 255);
+            i64  result{};
+            vm.Run(compiled_code, result);
+            return result;
         }
         else
         {

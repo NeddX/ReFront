@@ -34,6 +34,12 @@ namespace cmm::cmc {
 
     using namespace codegen;
 
+    RegType GetRegister(const usize idx) noexcept
+    {
+        constexpr RegType r = RegType::R0;
+        return (RegType)((usize)r + idx);
+    }
+
     Compiler::Compiler(SyntaxTree tree) : m_Tree(std::move(tree))
     {
     }
@@ -72,6 +78,7 @@ namespace cmm::cmc {
 
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Push, .sreg = RegType::BP });
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Mov, .sreg = RegType::SP, .dreg = RegType::BP });
+        m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Pushar });
 
         for (const auto& s : block.children)
         {
@@ -85,6 +92,7 @@ namespace cmm::cmc {
         }
 
         m_SymbolTableStack.pop_back();
+        m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Popar });
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Leave });
     }
 
@@ -166,6 +174,17 @@ namespace cmm::cmc {
                 CompileLiteral(expr);
                 break;
             }
+            case AdditionExpression:
+            case SubtractionExpression: {
+                CompileExpression(expr.children[0]);
+                CompileExpression(expr.children[1]);
+
+                break;
+            }
+            case DivisionExpression:
+            case MultiplicationExpression: {
+                break;
+            }
             default: break;
         }
     }
@@ -226,5 +245,21 @@ namespace cmm::cmc {
         }
 
         current_table.GetOffset() = prev_offset;
+    }
+
+    void Compiler::CompileFunctionCall(const ast::Statement& fnCall)
+    {
+        for (const auto& fn : m_CompiledFunctions)
+        {
+            if (fn.name == fnCall.name)
+            {
+                m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Call, .imm64 = fn.address });
+
+                for (const auto& arg : fnCall.children[0].children)
+                {
+                    CompileExpression(arg);
+                }
+            }
+        }
     }
 } // namespace cmm::cmc
