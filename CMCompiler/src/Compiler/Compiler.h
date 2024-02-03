@@ -21,7 +21,7 @@ namespace cmm::cmc {
             SymbolKind     kind{};
             ast::Statement stmt{};
             usize          size{};
-            usize          address{};
+            i32            address{};
         };
 
         struct SymbolTable
@@ -32,8 +32,10 @@ namespace cmm::cmc {
             usize                                   m_UsedRegisters{};
 
         public:
-            inline i32&       GetOffset() noexcept { return m_Offset; }
-            inline const i32& GetOffset() const noexcept { return m_Offset; }
+            inline i32&         GetOffset() noexcept { return m_Offset; }
+            inline const i32&   GetOffset() const noexcept { return m_Offset; }
+            inline usize&       GetUsedRegisters() noexcept { return m_UsedRegisters; };
+            inline const usize& GetUsedRegisters() const noexcept { return m_UsedRegisters; };
 
         public:
             void          AddSymbol(Symbol symbol) noexcept;
@@ -70,6 +72,8 @@ namespace cmm::cmc {
         void                         CompileLiteral(const ast::Statement& literal);
         void                         CompileInitializerList(const ast::Statement& initList);
         void                         CompileFunctionCall(const ast::Statement& fnCall);
+        void                         CompileIdentifierName(const ast::Statement& ident);
+        void                         CompileFunctionArgumentList(const ast::Statement& args);
     };
 } // namespace cmm::cmc
 

@@ -78,7 +78,7 @@ namespace cmm::cmc {
 
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Push, .sreg = RegType::BP });
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Mov, .sreg = RegType::SP, .dreg = RegType::BP });
-        m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Pushar });
+        // m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Pushar });
 
         for (const auto& s : block.children)
         {
@@ -87,12 +87,13 @@ namespace cmm::cmc {
                 using enum StatementKind;
 
                 case VariableDeclaration: CompileVariableDeclaration(s); break;
+                case FunctionCallExpression: CompileFunctionCall(s); break;
                 default: break;
             }
         }
 
         m_SymbolTableStack.pop_back();
-        m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Popar });
+        // m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Popar });
         m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Leave });
     }
 
@@ -114,6 +115,11 @@ namespace cmm::cmc {
             // We know that a variable declaration statement will always have an Initializer statement if initialized
             // (but of course).
             CompileInitializer(var.children[0]);
+            m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
+                                                  .sreg   = GetRegister(--current_table.GetUsedRegisters()),
+                                                  .dreg   = MemReg(RegType::BP),
+                                                  .disp   = current_table.GetOffset(),
+                                                  .size   = (i8)(var.type.size / 8) });
             current_table.AddSymbol(sym);
         }
         else
@@ -128,7 +134,7 @@ namespace cmm::cmc {
                 case Integer32:
                 case Integer64:
                     m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
-                                                          .sreg   = RegType::BP,
+                                                          .dreg   = MemReg(RegType::BP),
                                                           .disp   = current_table.GetOffset(),
                                                           .size   = (i8)(var.type.size / 8) });
                     break;
@@ -142,24 +148,12 @@ namespace cmm::cmc {
     void Compiler::CompileInitializer(const Statement& init)
     {
         // Check if the initializer's value is a value, expression or a initializer list.
-        switch (init.children[0].kind)
-        {
-            using enum StatementKind;
-
-            case LiteralExpression: {
-                CompileLiteral(init.children[0]);
-                break;
-            }
-            case InitializerList: {
-                CompileInitializerList(init.children[0]);
-                break;
-            }
-            default: break;
-        }
+        CompileExpression(init.children[0]);
     }
 
     void Compiler::CompileExpression(const ast::Statement& expr)
     {
+        auto& current_table = m_SymbolTableStack.back();
         switch (expr.kind)
         {
             using enum StatementKind;
@@ -179,10 +173,30 @@ namespace cmm::cmc {
                 CompileExpression(expr.children[0]);
                 CompileExpression(expr.children[1]);
 
+                auto&      used_regs = current_table.GetUsedRegisters();
+                const auto op_code   = (expr.kind == AdditionExpression) ? OpCode::Add : OpCode::Sub;
+                m_CompiledCode.push_back(Instruction{
+                    .opcode = op_code, .sreg = GetRegister(--used_regs), .dreg = GetRegister(used_regs - 1) });
                 break;
             }
             case DivisionExpression:
             case MultiplicationExpression: {
+                CompileExpression(expr.children[0]);
+                CompileExpression(expr.children[1]);
+
+                auto&      used_regs = current_table.GetUsedRegisters();
+                const auto op_code   = (expr.kind == DivisionExpression) ? OpCode::Div : OpCode::Mul;
+                m_CompiledCode.push_back(Instruction{
+                    .opcode = op_code, .sreg = GetRegister(--used_regs), .dreg = GetRegister(used_regs - 1) });
+                break;
+            }
+
+            case IdentifierName: {
+                auto& sym = m_SymbolTableStack.back().GetSymbol(expr.name);
+                m_CompiledCode.push_back(Instruction{ .opcode  = OpCode::Lea,
+                                                      .sreg    = GetRegister(current_table.GetUsedRegisters()++),
+                                                      .disp    = sym.address,
+                                                      .src_reg = RegType::BP });
                 break;
             }
             default: break;
@@ -207,22 +221,17 @@ namespace cmm::cmc {
             case Character:
             case Integer32:
             case Integer64: {
-                m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
+                m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Mov,
                                                       .imm64  = (u64)literal_token.num,
-                                                      .sreg   = RegType::BP,
-                                                      .disp   = current_table.GetOffset(),
-                                                      .size   = (i8)(literal.type.size / 8) });
+                                                      .dreg   = GetRegister(current_table.GetUsedRegisters()++) });
                 break;
             }
             case String: {
                 auto offset = current_table.GetOffset();
                 for (char c : literal_token.span.text)
                 {
-                    m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Store,
-                                                          .imm64  = (u64)c,
-                                                          .sreg   = RegType::BP,
-                                                          .disp   = offset,
-                                                          .size   = (i8)(Type::Character.size / 8) });
+                    m_CompiledCode.push_back(
+                        Instruction{ .opcode = OpCode::Push, .imm64 = (u64)c, .size = (i8)(Type::Character.size / 8) });
                     offset += Type::Character.size / 8;
                 }
                 break;
@@ -249,17 +258,33 @@ namespace cmm::cmc {
 
     void Compiler::CompileFunctionCall(const ast::Statement& fnCall)
     {
+        auto& current_table = m_SymbolTableStack.back();
+        if (fnCall.name == "println")
+        {
+            CompileFunctionArgumentList(fnCall.children[0]);
+            m_CompiledCode.push_back(
+                Instruction{ .opcode = OpCode::PInt, .sreg = GetRegister(--current_table.GetUsedRegisters()) });
+            return;
+        }
+
         for (const auto& fn : m_CompiledFunctions)
         {
             if (fn.name == fnCall.name)
             {
                 m_CompiledCode.push_back(Instruction{ .opcode = OpCode::Call, .imm64 = fn.address });
-
                 for (const auto& arg : fnCall.children[0].children)
                 {
                     CompileExpression(arg);
                 }
             }
+        }
+    }
+
+    void Compiler::CompileFunctionArgumentList(const ast::Statement& args)
+    {
+        for (const auto& arg : args.children)
+        {
+            CompileExpression(arg);
         }
     }
 } // namespace cmm::cmc
