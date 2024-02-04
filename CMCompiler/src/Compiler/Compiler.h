@@ -49,6 +49,10 @@ namespace cmm::cmc {
             std::string name{};
             usize       address{};
         };
+
+        struct StringPool
+        {
+        };
     } // namespace codegen
 
     class Compiler
